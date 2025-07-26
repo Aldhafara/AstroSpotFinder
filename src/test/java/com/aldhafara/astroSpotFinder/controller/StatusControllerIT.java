@@ -1,6 +1,6 @@
-package com.aldhafara.javaMicroserviceStarter.controller;
+package com.aldhafara.astroSpotFinder.controller;
 
-import com.aldhafara.javaMicroserviceStarter.service.StatusService;
+import com.aldhafara.astroSpotFinder.service.StatusService;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;

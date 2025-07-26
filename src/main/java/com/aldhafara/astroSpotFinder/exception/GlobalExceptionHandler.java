@@ -1,6 +1,6 @@
-package com.aldhafara.javaMicroserviceStarter.exception;
+package com.aldhafara.astroSpotFinder.exception;
 
-import com.aldhafara.javaMicroserviceStarter.model.ApiErrorResponse;
+import com.aldhafara.astroSpotFinder.model.ApiErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;

@@ -1,13 +1,13 @@
-package com.aldhafara.javaMicroserviceStarter;
+package com.aldhafara.astroSpotFinder;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class JavaMicroserviceStarterApplication {
+public class AstroSpotFinderApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(JavaMicroserviceStarterApplication.class, args);
+		SpringApplication.run(AstroSpotFinderApplication.class, args);
 	}
 
 }

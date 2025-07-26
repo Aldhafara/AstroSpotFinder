@@ -1,10 +1,10 @@
-package com.aldhafara.javaMicroserviceStarter;
+package com.aldhafara.astroSpotFinder;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class JavaMicroserviceStarterApplicationTests {
+class AstroSpotFinderApplicationTests {
 
 	@Test
 	void contextLoads() {

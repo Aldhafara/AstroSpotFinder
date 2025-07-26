@@ -1,13 +1,12 @@
-# java-microservice-starter
+# AstroSpotFinder
 
-![Build](https://github.com/Aldhafara/java-microservice-starter/actions/workflows/ci.yml/badge.svg)
+![Build](https://github.com/Aldhafara/AstroSpotFinder/actions/workflows/ci.yml/badge.svg)
 
-![License](https://img.shields.io/github/license/Aldhafara/java-microservice-starter)
+![License](https://img.shields.io/github/license/Aldhafara/AstroSpotFinder)
 
-![Last Commit](https://img.shields.io/github/last-commit/Aldhafara/java-microservice-starter)
+![Last Commit](https://img.shields.io/github/last-commit/Aldhafara/AstroSpotFinder)
 
-java-microservice-starter is Java/Spring Boot Microservice Skeleton
-Reusable starter for building production-ready Java/Spring Boot microservices.
+AstroSpotFinder is a microservice that finds the darkest spots for night sky observation within a specified radius from a starting point. It uses light pollution maps and an iterative search algorithm, providing a fast and accurate API for planning astro-expeditions.
 
 ## Table of Contents
 
@@ -50,7 +49,7 @@ Before running the application, you need an `application.properties` file with y
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/Aldhafara/java-microservice-starter.git
+git clone https://github.com/Aldhafara/AstroSpotFinder.git
 ```
 
 2. Prepare your configuration:
@@ -84,13 +83,13 @@ http://localhost:8080
 3. Build the image:
 
 ```bash
-docker build -t javamicroservicestarter .
+docker build -t astrospotfinder .
 ```
 
 4. Run (with local `application.properties` mounted):
 
 ```bash
-docker run -p 8080:8080 -v $(pwd)/src/main/resources/application.properties:/app/application.properties  javamicroservicestarter
+docker run -p 8080:8080 -v $(pwd)/src/main/resources/application.properties:/app/application.properties  astrospotfinder
 ```
 
 5. (or, with Docker Compose)

@@ -11,10 +11,10 @@
 		<relativePath/>
 	</parent>
 	<groupId>com.aldhafara</groupId>
-	<artifactId>javaMicroserviceStarter</artifactId>
+	<artifactId>astroSpotFinder</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>JavaMicroserviceStarter</name>
-	<description>Demo project for Spring Boot</description>
+	<name>AstroSpotFinder</name>
+	<description>AstroSpotFinder is a microservice that finds the darkest spots for night sky observation within a specified radius from a starting point. It uses light pollution maps and an iterative search algorithm, providing a fast and accurate API for planning astro-expeditions.</description>
 
 	<properties>
 		<java.version>21</java.version>

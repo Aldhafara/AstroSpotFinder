@@ -1,4 +1,4 @@
-package com.aldhafara.javaMicroserviceStarter.service;
+package com.aldhafara.astroSpotFinder.service;
 
 import org.junit.jupiter.api.Test;
 
