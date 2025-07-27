@@ -11,6 +11,7 @@ AstroSpotFinder is a microservice that finds the darkest spots for night sky obs
 ## Table of Contents
 
 - [Features](#features)
+- [Required (or Recommended) Microservices](#required-or-recommended-microservices)
 - [Configuration](#configuration)
 - [How to Run](#how-to-run)
 - [How to Run with Docker](#how-to-run-with-docker)
@@ -32,6 +33,31 @@ AstroSpotFinder is a microservice that finds the darkest spots for night sky obs
 Currently under development. Available now:
 
 - /status health-check endpoint (server status, uptime, timestamp)
+
+## Required (or Recommended) Microservices
+
+AstroSpotFinder is designed to work with several supporting microservices to provide the most accurate astronomical
+site recommendations. For best results, the following services should be available:
+
+- [LightPollutionService](https://github.com/Aldhafara/LightPollutionService)  
+  Provides sky darkness and light pollution data for a given location.
+- [WeatherForecastLite](https://github.com/Aldhafara/WeatherForecastLite)  
+  Supplies nighttime cloud cover and temperature forecasts.
+
+**Fallback/Dummy support:**
+If any of the required services are unavailable, AstroSpotFinder will attempt to substitute them with dummy (fallback)
+implementations to ensure the core application remains operational, though with limited accuracy.
+You can use the application in development mode or demo mode even without all external dependencies.
+
+You can find links to the sample implementations in the table below:
+
+| Service Name          | Description                               | Repository                                              | Config Property           |
+|-----------------------|-------------------------------------------|---------------------------------------------------------|---------------------------|
+| LightPollutionService | Sky darkness/light pollution data         | https://github.com/Aldhafara/LightPollutionService      | lightpollutionservice.url |
+| WeatherForecastLite   | Nighttime weather forecast (cloud/temp)   | https://github.com/Aldhafara/WeatherForecastLite        | weatherforecastlite.url   |
+
+**Config Property** indicates the name of the configuration key in the application.properties file
+(or other configuration file) under which the URL of the corresponding running microservice should be provided.
 
 ## Configuration
 
