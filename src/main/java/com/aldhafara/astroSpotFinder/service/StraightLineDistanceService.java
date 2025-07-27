@@ -1,12 +1,14 @@
 package com.aldhafara.astroSpotFinder.service;
 
 import com.aldhafara.astroSpotFinder.model.Coordinate;
+import org.springframework.cache.annotation.Cacheable;
 
 public class StraightLineDistanceService implements DistanceService {
 
     private static final double EARTH_RADIUS_KM = 6371.0;
 
     @Override
+    @Cacheable("distances")
     public double findDistance(Coordinate pointA, Coordinate pointB) {
         double latA = Math.toRadians(pointA.latitude());
         double lonA = Math.toRadians(pointA.longitude());
