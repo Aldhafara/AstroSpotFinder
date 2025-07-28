@@ -13,6 +13,13 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,6 +42,11 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         this.distanceService = distanceService;
         this.topNumber = topNumber <= 0 ? 1 : topNumber;
         this.topPercent = topPercent > 100 ? 100 : topPercent;
+    }
+
+    private static <T> Predicate<T> distinctByKey(Function<? super T, ?> keyExtractor) {
+        Set<Object> seen = ConcurrentHashMap.newKeySet();
+        return t -> seen.add(keyExtractor.apply(t));
     }
 
     @Override
@@ -64,7 +76,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                 if (distance <= radiusKm) {
                     coordinates.add(new Coordinate(lat, lon));
                 }
-                if (log.isDebugEnabled() && coordinates.size()%10 == 0) {
+                if (log.isDebugEnabled() && coordinates.size() % 10 == 0) {
                     log.debug("Generated {} points within radius {} km from center {}", coordinates.size(), radiusKm, center);
                 }
             }
@@ -104,5 +116,64 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         int finalSize = Math.min(Math.max(limit, topNumber), brightnessList.size());
         log.debug("filterTopByBrightness() return {} of {} coordinates", finalSize, coordinates.size());
         return brightnessList.subList(0, finalSize);
+    }
+
+    @Override
+    public List<LocationConditions> searchBestSpotsRecursive(Coordinate center, double radiusKm, GridSize gridSize, int depth, int maxDepth, double radiusDiv, int gridDiv) {
+        if (depth > maxDepth || radiusKm < 0.04) {
+            log.debug("searchBestSpotsRecursive [depth={}]: invalid parameters radiusKm={} depth={} maxDepth={}", depth, radiusKm, depth, maxDepth);
+            return Collections.emptyList();
+        }
+
+        List<Coordinate> gridPoints = findPointsWithinRadius(center, radiusKm, gridSize);
+
+        if (gridPoints.isEmpty()) {
+            log.debug("searchBestSpotsRecursive [depth={}]: list gridPoints is empty", depth);
+            return Collections.emptyList();
+        }
+
+        List<LocationConditions> topSpots = filterTopByBrightness(gridPoints);
+
+        if (topSpots.isEmpty()) {
+            log.debug("searchBestSpotsRecursive [depth={}]: list topSpots is empty", depth);
+            return Collections.emptyList();
+        }
+
+        List<LocationConditions> result = new ArrayList<>(topSpots);
+
+        List<CompletableFuture<List<LocationConditions>>> futures = topSpots.stream()
+                .map(spot -> supplyAsync(() -> {
+                    Coordinate subCenter = spot.coordinate();
+                    double nextRadius = radiusKm / radiusDiv;
+                    GridSize nextGrid = new GridSize(
+                            gridSize.latitudeDegrees() / gridDiv,
+                            gridSize.longitudeDegrees() / gridDiv
+                    );
+                    return searchBestSpotsRecursive(subCenter, nextRadius, nextGrid,
+                            depth + 1, maxDepth, radiusDiv, gridDiv);
+                }))
+                .toList();
+
+        List<LocationConditions> subResults = futures.stream()
+                .map(future -> {
+                    try {
+                        return future.join();
+                    } catch (CompletionException e) {
+                        log.error("Exception in recursive task", e);
+                        return Collections.<LocationConditions>emptyList();
+                    }
+                })
+                .flatMap(List::stream)
+                .toList();
+
+        result.addAll(subResults.stream()
+                .filter(distinctByKey(loc -> List.of(loc.coordinate(), loc.brightness())))
+                .toList());
+
+        return result;
+    }
+
+    protected <T> CompletableFuture<T> supplyAsync(Supplier<T> supplier) {
+        return CompletableFuture.supplyAsync(supplier);
     }
 }

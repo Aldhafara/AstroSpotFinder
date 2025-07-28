@@ -10,4 +10,12 @@ public interface AstroSpotService {
 
     List<Coordinate> findPointsWithinRadius(Coordinate center, double radiusKm, GridSize gridSize);
     List<LocationConditions> filterTopByBrightness(List<Coordinate> points);
+    List<LocationConditions> searchBestSpotsRecursive(
+            Coordinate center,
+            double radiusKm,
+            GridSize gridSize,
+            int depth,
+            int maxDepth,
+            double radiusDiv,
+            int gridDiv);
 }

@@ -13,26 +13,28 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 public class AstroSpotServiceImplTest {
 
+    private static final double KM_PER_DEGREE = 111.0;
     @Mock
     private LightPollutionService lightPollutionService;
-
     @Mock
     private StraightLineDistanceService distanceService;
-
     private AstroSpotServiceImpl astroSpotService;
-
-    private static final double KM_PER_DEGREE = 111.0;
 
     @BeforeEach
     void setUp() {
@@ -187,4 +189,65 @@ public class AstroSpotServiceImplTest {
         assertEquals(coords.get(1), result.get(0).coordinate());
     }
 
+    @Test
+    void testSearchBestSpotsRecursive_BaseCases_returnEmpty() {
+        Coordinate center = new Coordinate(0, 0);
+        GridSize gridSize = new GridSize(1.0, 1.0);
+
+        List<LocationConditions> result1 = astroSpotService.searchBestSpotsRecursive(center, 10, gridSize, 5, 4, 2, 2);
+        assertTrue(result1.isEmpty());
+
+        List<LocationConditions> result2 = astroSpotService.searchBestSpotsRecursive(center, 0.03, gridSize, 0, 4, 2, 2);
+        assertTrue(result2.isEmpty());
+    }
+
+    @Test
+    void testSearchBestSpotsRecursive_emptyGridPoints_returnEmpty() {
+        AstroSpotServiceImpl spyService = spy(astroSpotService);
+
+        doReturn(Collections.emptyList()).when(spyService).findPointsWithinRadius(any(), anyDouble(), any());
+
+        List<LocationConditions> result = spyService.searchBestSpotsRecursive(new Coordinate(0, 0), 10, new GridSize(1.0, 1.0), 0, 4, 2, 2);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testSearchBestSpotsRecursive_emptyTopSpots_returnEmpty() {
+        AstroSpotServiceImpl spyService = spy(astroSpotService);
+
+        List<Coordinate> coords = List.of(new Coordinate(1, 1), new Coordinate(2, 2));
+        doReturn(coords).when(spyService).findPointsWithinRadius(any(), anyDouble(), any());
+        doReturn(Collections.emptyList()).when(spyService).filterTopByBrightness(coords);
+
+        List<LocationConditions> result = spyService.searchBestSpotsRecursive(new Coordinate(0, 0), 10, new GridSize(1.0, 1.0), 0, 4, 2, 2);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testSearchBestSpotsRecursive_fullFlow_returnsAggregatedResults() {
+        AstroSpotServiceImpl spyService = spy(astroSpotService);
+
+        Coordinate spot1 = new Coordinate(1, 1);
+        LocationConditions locCond1 = new LocationConditions(spot1, 10);
+        List<LocationConditions> topSpots = List.of(locCond1);
+        List<Coordinate> gridPoints = List.of(spot1);
+
+        doReturn(gridPoints).when(spyService).findPointsWithinRadius(any(), anyDouble(), any());
+        doReturn(topSpots).when(spyService).filterTopByBrightness(gridPoints);
+
+        doAnswer(invocation -> CompletableFuture.completedFuture(Collections.emptyList()))
+                .when(spyService).supplyAsync(any());
+
+        List<LocationConditions> results = spyService.searchBestSpotsRecursive(
+                new Coordinate(0, 0),
+                10,
+                new GridSize(1.0, 1.0),
+                0,
+                4,
+                2,
+                2);
+
+        assertFalse(results.isEmpty());
+        assertTrue(results.contains(locCond1));
+    }
 }
