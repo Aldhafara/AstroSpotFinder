@@ -2,7 +2,9 @@ package com.aldhafara.astroSpotFinder.service;
 
 import com.aldhafara.astroSpotFinder.model.Coordinate;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
 
+@Service
 public class StraightLineDistanceService implements DistanceService {
 
     private static final double EARTH_RADIUS_KM = 6371.0;
