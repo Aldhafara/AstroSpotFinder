@@ -37,9 +37,10 @@ public class LightPollutionServiceImpl implements LightPollutionService {
         StopWatch stopWatch = new StopWatch();
         stopWatch.start();
 
+        URI uri = buildDarknessUrl(coordinate);
         try {
             LightPollutionInfo response = restTemplate.getForObject(
-                    buildUrl(coordinate), LightPollutionInfo.class);
+                    uri, LightPollutionInfo.class);
 
             stopWatch.stop();
 
@@ -68,16 +69,16 @@ public class LightPollutionServiceImpl implements LightPollutionService {
 
         } catch (RestClientException e) {
             stopWatch.stop();
-            log.error("LightPollutionService request failed for coordinate {} in {}ms",
-                    coordinate, stopWatch.getTotalTimeMillis(), e);
+            log.error("LightPollutionService request failed for coordinate {} (URL: {}) in {}ms",
+                    coordinate, uri, stopWatch.getTotalTimeMillis(), e);
             return Optional.empty();
         }
     }
 
-    private URI buildUrl(Coordinate coordinate) {
-        return UriComponentsBuilder.fromUriString(serviceUrl)
-                .queryParam("lat", coordinate.latitude())
-                .queryParam("lon", coordinate.longitude())
+    private URI buildDarknessUrl(Coordinate coordinate) {
+        return UriComponentsBuilder.fromUriString(serviceUrl + "/darkness")
+                .queryParam("latitude", coordinate.latitude())
+                .queryParam("longitude", coordinate.longitude())
                 .build()
                 .toUri();
     }
