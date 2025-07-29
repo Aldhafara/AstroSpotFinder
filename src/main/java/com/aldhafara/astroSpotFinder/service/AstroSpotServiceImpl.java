@@ -3,10 +3,12 @@ package com.aldhafara.astroSpotFinder.service;
 import com.aldhafara.astroSpotFinder.model.Coordinate;
 import com.aldhafara.astroSpotFinder.model.GridSize;
 import com.aldhafara.astroSpotFinder.model.LocationConditions;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StopWatch;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,6 +19,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -31,15 +35,18 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
     private final LightPollutionService lightPollutionService;
     private final DistanceService distanceService;
+    private final ExecutorService executorService;
     private final int topNumber;
     private final double topPercent;
 
     public AstroSpotServiceImpl(LightPollutionService lightPollutionService,
                                 DistanceService distanceService,
                                 @Value("${astrospot.top.number}") int topNumber,
-                                @Value("${astrospot.top.percent}") double topPercent) {
+                                @Value("${astrospot.top.percent}") double topPercent,
+                                @Value("${astrospot.executor.threads:4}") int executorThreads) {
         this.lightPollutionService = lightPollutionService;
         this.distanceService = distanceService;
+        this.executorService = Executors.newFixedThreadPool(executorThreads);
         this.topNumber = topNumber <= 0 ? 1 : topNumber;
         this.topPercent = topPercent > 100 ? 100 : topPercent;
     }
@@ -120,6 +127,9 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
     @Override
     public List<LocationConditions> searchBestSpotsRecursive(Coordinate center, double radiusKm, GridSize gridSize, int depth, int maxDepth, double radiusDiv, int gridDiv) {
+        StopWatch stopWatch = new StopWatch();
+        stopWatch.start("searchBestSpotsRecursive [depth={}]");
+
         if (depth > maxDepth || radiusKm < 0.04) {
             log.debug("searchBestSpotsRecursive [depth={}]: invalid parameters radiusKm={} depth={} maxDepth={}", depth, radiusKm, depth, maxDepth);
             return Collections.emptyList();
@@ -170,10 +180,18 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                 .filter(distinctByKey(loc -> List.of(loc.coordinate(), loc.brightness())))
                 .toList());
 
+        stopWatch.stop();
+        log.info("searchBestSpotsRecursive finished at depth={} in {} ms", depth, stopWatch.getTotalTimeMillis());
+
         return result;
     }
 
     protected <T> CompletableFuture<T> supplyAsync(Supplier<T> supplier) {
-        return CompletableFuture.supplyAsync(supplier);
+        return CompletableFuture.supplyAsync(supplier, executorService);
+    }
+
+    @PreDestroy
+    public void shutdownExecutor() {
+        executorService.shutdown();
     }
 }
