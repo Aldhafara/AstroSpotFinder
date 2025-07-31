@@ -16,14 +16,19 @@ public class DummyLightPollutionService implements LightPollutionService {
 
     private static final Logger log = LoggerFactory.getLogger(DummyLightPollutionService.class);
 
+    public DummyLightPollutionService() {
+        log.debug("Using DummyLightPollutionService as LightPollutionService implementation");
+    }
+
     @Override
     @Cacheable("lightPollution_dummy")
     public Optional<LightPollutionInfo> getLightPollution(Coordinate coordinate) {
-        log.info("Use DummyLightPollutionService receiving response for {}", coordinate);
+        double brightness = Math.random() * 255;
+        log.info("Use DummyLightPollutionService receiving response for {} : {}", coordinate, brightness);
         return Optional.of(new LightPollutionInfo(
                 coordinate.latitude(),
                 coordinate.longitude(),
-                Math.random() * 255
+                brightness
         ));
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StopWatch;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -27,6 +28,7 @@ public class LightPollutionServiceImpl implements LightPollutionService {
 
     public LightPollutionServiceImpl(RestTemplate restTemplate,
                                      @Value("${lightpollutionservice.url}") String serviceUrl) {
+        log.debug("Using LightPollutionServiceImpl as LightPollutionService implementation");
         this.restTemplate = restTemplate;
         this.serviceUrl = serviceUrl;
     }
@@ -67,6 +69,10 @@ public class LightPollutionServiceImpl implements LightPollutionService {
 
             return Optional.of(response);
 
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            stopWatch.stop();
+            log.warn("429 Too Many Requests for coordinate {}: will NOT cache this error", coordinate);
+            throw e;
         } catch (RestClientException e) {
             stopWatch.stop();
             log.error("LightPollutionService request failed for coordinate {} (URL: {}) in {}ms",

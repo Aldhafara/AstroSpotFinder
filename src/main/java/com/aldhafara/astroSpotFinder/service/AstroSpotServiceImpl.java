@@ -3,6 +3,9 @@ package com.aldhafara.astroSpotFinder.service;
 import com.aldhafara.astroSpotFinder.model.Coordinate;
 import com.aldhafara.astroSpotFinder.model.GridSize;
 import com.aldhafara.astroSpotFinder.model.LocationConditions;
+import com.aldhafara.astroSpotFinder.model.SearchArea;
+import com.aldhafara.astroSpotFinder.model.SearchContext;
+import com.aldhafara.astroSpotFinder.model.SearchParams;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,11 +45,10 @@ public class AstroSpotServiceImpl implements AstroSpotService {
     public AstroSpotServiceImpl(LightPollutionService lightPollutionService,
                                 DistanceService distanceService,
                                 @Value("${astrospot.top.number}") int topNumber,
-                                @Value("${astrospot.top.percent}") double topPercent,
-                                @Value("${astrospot.executor.threads:4}") int executorThreads) {
+                                @Value("${astrospot.top.percent}") double topPercent) {
         this.lightPollutionService = lightPollutionService;
         this.distanceService = distanceService;
-        this.executorService = Executors.newFixedThreadPool(executorThreads);
+        this.executorService = Executors.newCachedThreadPool();
         this.topNumber = topNumber <= 0 ? 1 : topNumber;
         this.topPercent = topPercent > 100 ? 100 : topPercent;
     }
@@ -57,20 +59,20 @@ public class AstroSpotServiceImpl implements AstroSpotService {
     }
 
     @Override
-    public List<Coordinate> findPointsWithinRadius(Coordinate center, double radiusKm, GridSize gridSize) {
-        log.debug("findPointsWithinRadius called with center={} radiusKm={} gridSize={}", center, radiusKm, gridSize);
+    public List<Coordinate> findPointsWithinRadius(SearchArea searchArea, SearchArea originSearchArea, GridSize gridSize) {
+        log.debug("findPointsWithinRadius called with center={} radiusKm={} gridSize={}", searchArea.center(), searchArea.radiusKm(), gridSize);
 
         List<Coordinate> coordinates = new ArrayList<>();
 
-        if (radiusKm <= 0 || center == null) {
-            log.warn("findPointsWithinRadius: invalid parameters radiusKm={} center={}", radiusKm, center);
+        if (searchArea.radiusKm() <= 0 || searchArea.center() == null) {
+            log.warn("findPointsWithinRadius: invalid parameters radiusKm={} center={}", searchArea.radiusKm(), searchArea.center());
             return coordinates;
         }
 
-        double centerLat = center.latitude();
-        double centerLon = center.longitude();
+        double centerLat = searchArea.center().latitude();
+        double centerLon = searchArea.center().longitude();
 
-        double radiusInDegrees = radiusKm / KM_PER_DEGREE;
+        double radiusInDegrees = searchArea.radiusKm() / KM_PER_DEGREE;
 
         double minLat = centerLat - radiusInDegrees;
         double maxLat = centerLat + radiusInDegrees;
@@ -80,19 +82,22 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         for (double lat = minLat; lat <= maxLat; lat += gridSize.latitudeDegrees()) {
             for (double lon = minLon; lon <= maxLon; lon += gridSize.longitudeDegrees()) {
                 double distance = distanceService.findDistance(new Coordinate(centerLat, centerLon), new Coordinate(lat, lon));
-                if (distance <= radiusKm) {
+                double distanceFromOrigin = distanceService.findDistance(originSearchArea.center(), new Coordinate(lat, lon));
+                if (distance <= searchArea.radiusKm() && distanceFromOrigin <= originSearchArea.radiusKm()) {
                     coordinates.add(new Coordinate(lat, lon));
                 }
-                if (log.isDebugEnabled() && coordinates.size() % 10 == 0) {
-                    log.debug("Generated {} points within radius {} km from center {}", coordinates.size(), radiusKm, center);
+                int coordinatesSize = coordinates.size();
+                if (log.isDebugEnabled() && coordinatesSize > 0 && coordinatesSize % 10 == 0) {
+                    log.debug("Generated {} points within radius {} km from center {}", coordinatesSize, searchArea.radiusKm(), searchArea.center());
                 }
             }
         }
+
         if (coordinates.size() > 1000) {
             log.warn("Large number of points generated ({}) - consider tuning gridSize or radius.", coordinates.size());
         }
 
-        log.debug("Generated {} points within radius {} km from center {}", coordinates.size(), radiusKm, center);
+        log.debug("Generated {} points within radius {} km from center {}", coordinates.size(), searchArea.radiusKm(), searchArea.center());
         return coordinates;
     }
 
@@ -115,52 +120,94 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                         .map(info -> new LocationConditions(coord, info.relativeBrightness()))
                         .orElse(null))
                 .filter(Objects::nonNull)
-                .sorted(Comparator.comparingDouble(LocationConditions::brightness))
                 .collect(Collectors.toList());
 
-        int limit = (int) Math.ceil(brightnessList.size() * (topPercent / 100.0));
-
-        int finalSize = Math.min(Math.max(limit, topNumber), brightnessList.size());
-        log.debug("filterTopByBrightness() return {} of {} coordinates", finalSize, coordinates.size());
-        return brightnessList.subList(0, finalSize);
+        return getTopLocationConditions(brightnessList);
     }
 
     @Override
-    public List<LocationConditions> searchBestSpotsRecursive(Coordinate center, double radiusKm, GridSize gridSize, int depth, int maxDepth, double radiusDiv, int gridDiv) {
+    public List<LocationConditions> getTopLocationConditions(List<LocationConditions> list) {
+        List<LocationConditions> sortedList = list.stream()
+                .sorted(Comparator.comparingDouble(LocationConditions::brightness))
+                .toList();
+        int limit = (int) Math.ceil(list.size() * (topPercent / 100.0));
+
+        int finalSize = Math.min(Math.max(limit, topNumber), list.size());
+        log.debug("filterTopByBrightness() return {} of {} coordinates", finalSize, list.size());
+        return sortedList.subList(0, finalSize);
+    }
+
+    @Override
+    public List<LocationConditions> searchBestSpotsRecursive(SearchParams searchParams) {
         StopWatch stopWatch = new StopWatch();
         stopWatch.start("searchBestSpotsRecursive [depth={}]");
+        log.debug("searchBestSpotsRecursive [depth={}]: Parameters radiusKm={} depth={} maxDepth={}", searchParams.depth(), searchParams.searchContext().searchArea().radiusKm(), searchParams.depth(), searchParams.searchContext().maxDepth());
 
-        if (depth > maxDepth || radiusKm < 0.04) {
-            log.debug("searchBestSpotsRecursive [depth={}]: invalid parameters radiusKm={} depth={} maxDepth={}", depth, radiusKm, depth, maxDepth);
+        if (searchParams.depth() > searchParams.searchContext().maxDepth() || searchParams.searchContext().searchArea().radiusKm() < 0.035) {
+            log.debug("searchBestSpotsRecursive [depth={}]: invalid parameters radiusKm={} depth={} maxDepth={}", searchParams.depth(), searchParams.searchContext().searchArea().radiusKm(), searchParams.depth(), searchParams.searchContext().maxDepth());
             return Collections.emptyList();
         }
 
-        List<Coordinate> gridPoints = findPointsWithinRadius(center, radiusKm, gridSize);
+        List<Coordinate> gridPoints = findPointsWithinRadius(searchParams.searchContext().searchArea(), searchParams.originSearchArea(), searchParams.gridSize());
 
         if (gridPoints.isEmpty()) {
-            log.debug("searchBestSpotsRecursive [depth={}]: list gridPoints is empty", depth);
-            return Collections.emptyList();
+            log.debug("searchBestSpotsRecursive [depth={}]: list gridPoints is empty, thickening the grid.", searchParams.depth());
+
+            SearchContext searchContext = SearchContext.builder()
+                    .maxDepth(searchParams.searchContext().maxDepth())
+                    .gridDiv(searchParams.searchContext().gridDiv())
+                    .searchArea(searchParams.searchContext().searchArea())
+                    .build();
+            GridSize nextGrid = GridSize.builder()
+                    .latitudeDegrees(searchParams.gridSize().latitudeDegrees() / searchParams.searchContext().gridDiv())
+                    .longitudeDegrees(searchParams.gridSize().longitudeDegrees() / searchParams.searchContext().gridDiv())
+                    .build();
+            SearchParams nextSearchParams = SearchParams.builder()
+                    .searchContext(searchContext)
+                    .gridSize(nextGrid)
+                    .depth(searchParams.depth())
+                    .originSearchArea(searchParams.originSearchArea())
+                    .build();
+
+            return searchBestSpotsRecursive(nextSearchParams);
         }
+        log.debug("searchBestSpotsRecursive [depth={}]: list gridPoints has size {}", searchParams.depth(), gridPoints.size());
 
         List<LocationConditions> topSpots = filterTopByBrightness(gridPoints);
 
         if (topSpots.isEmpty()) {
-            log.debug("searchBestSpotsRecursive [depth={}]: list topSpots is empty", depth);
+            log.debug("searchBestSpotsRecursive [depth={}]: list topSpots is empty", searchParams.depth());
             return Collections.emptyList();
         }
+        log.debug("searchBestSpotsRecursive [depth={}]: list topSpots has size {}", searchParams.depth(), topSpots.size());
 
         List<LocationConditions> result = new ArrayList<>(topSpots);
 
         List<CompletableFuture<List<LocationConditions>>> futures = topSpots.stream()
                 .map(spot -> supplyAsync(() -> {
                     Coordinate subCenter = spot.coordinate();
-                    double nextRadius = radiusKm / radiusDiv;
-                    GridSize nextGrid = new GridSize(
-                            gridSize.latitudeDegrees() / gridDiv,
-                            gridSize.longitudeDegrees() / gridDiv
-                    );
-                    return searchBestSpotsRecursive(subCenter, nextRadius, nextGrid,
-                            depth + 1, maxDepth, radiusDiv, gridDiv);
+                    double nextRadius = calculateNewRadius(searchParams.gridSize());
+                    GridSize nextGrid = GridSize.builder()
+                            .latitudeDegrees(searchParams.gridSize().latitudeDegrees() / searchParams.searchContext().gridDiv())
+                            .longitudeDegrees(searchParams.gridSize().longitudeDegrees() / searchParams.searchContext().gridDiv())
+                            .build();
+
+                    SearchContext searchContext = SearchContext.builder()
+                            .maxDepth(searchParams.searchContext().maxDepth())
+                            .gridDiv(searchParams.searchContext().gridDiv())
+                            .searchArea(SearchArea.builder()
+                                    .center(subCenter)
+                                    .radiusKm(nextRadius)
+                                    .build())
+                            .build();
+
+                    SearchParams nextSearchParams = SearchParams.builder()
+                            .searchContext(searchContext)
+                            .gridSize(nextGrid)
+                            .depth(searchParams.depth() + 1)
+                            .originSearchArea(searchParams.originSearchArea())
+                            .build();
+                    return searchBestSpotsRecursive(nextSearchParams);
                 }))
                 .toList();
 
@@ -181,9 +228,22 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                 .toList());
 
         stopWatch.stop();
-        log.info("searchBestSpotsRecursive finished at depth={} in {} ms", depth, stopWatch.getTotalTimeMillis());
+        log.info("searchBestSpotsRecursive finished at depth={} in {} ms", searchParams.depth(), stopWatch.getTotalTimeMillis());
+        log.debug("searchBestSpotsRecursive finished at depth={} in {} ms, result size:{}", searchParams.depth(), stopWatch.getTotalTimeMillis(), result.size());
 
         return result;
+    }
+
+    private double calculateNewRadius(GridSize gridSize) {
+        double kmPerDegreeLatitude = 111.0;
+        double kmPerDegreeLongitude = 70.0;  // averaged for Poland (approx. 49-55°N)
+
+        double sideNorthSouth = gridSize.latitudeDegrees() * kmPerDegreeLatitude;
+        double sideEastWest = gridSize.longitudeDegrees() * kmPerDegreeLongitude;
+
+        double newRadius = Math.max(sideNorthSouth, sideEastWest) * 1.5;
+        log.debug("calculateNewRadius for {}: {}", gridSize, newRadius);
+        return newRadius;
     }
 
     protected <T> CompletableFuture<T> supplyAsync(Supplier<T> supplier) {
