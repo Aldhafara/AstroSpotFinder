@@ -6,7 +6,9 @@
 
 ![Last Commit](https://img.shields.io/github/last-commit/Aldhafara/AstroSpotFinder)
 
-AstroSpotFinder is a microservice that finds the darkest spots for night sky observation within a specified radius from a starting point. It uses light pollution maps and an iterative search algorithm, providing a fast and accurate API for planning astro-expeditions.
+AstroSpotFinder is a microservice that finds the darkest spots for night sky observation within a specified radius from
+a starting point. It uses light pollution maps and an iterative search algorithm, providing a fast and accurate API for
+planning astro-expeditions.
 
 ## Table of Contents
 
@@ -33,6 +35,10 @@ AstroSpotFinder is a microservice that finds the darkest spots for night sky obs
 Currently under development. Available now:
 
 - /status health-check endpoint (server status, uptime, timestamp)
+- /astrospots/best REST endpoint - finds the best astro observations spots in a radius around specified coordinates
+- Recursive and asynchronous search algorithm leveraging parameter objects (SearchParams, SearchArea, SearchContext) for
+  flexible, precise queries
+- Caching of light pollution data responses for improved performance and reduced external calls
 
 ## Required (or Recommended) Microservices
 
@@ -51,19 +57,21 @@ You can use the application in development mode or demo mode even without all ex
 
 You can find links to the sample implementations in the table below:
 
-| Service Name          | Description                               | Repository                                              | Config Property           |
-|-----------------------|-------------------------------------------|---------------------------------------------------------|---------------------------|
-| LightPollutionService | Sky darkness/light pollution data         | https://github.com/Aldhafara/LightPollutionService      | lightpollutionservice.url |
-| WeatherForecastLite   | Nighttime weather forecast (cloud/temp)   | https://github.com/Aldhafara/WeatherForecastLite        | weatherforecastlite.url   |
+| Service Name          | Description                             | Repository                                         | Config Property           |
+|-----------------------|-----------------------------------------|----------------------------------------------------|---------------------------|
+| LightPollutionService | Sky darkness/light pollution data       | https://github.com/Aldhafara/LightPollutionService | lightpollutionservice.url |
+| WeatherForecastLite   | Nighttime weather forecast (cloud/temp) | https://github.com/Aldhafara/WeatherForecastLite   | weatherforecastlite.url   |
 
 **Config Property** indicates the name of the configuration key in the application.properties file
 (or other configuration file) under which the URL of the corresponding running microservice should be provided.
 
 ## Configuration
 
-Before running the application, you need an `application.properties` file with your local configuration (paths, API keys, etc.).
+Before running the application, you need an `application.properties` file with your local configuration (paths, API
+keys, etc.).
 
 1. Copy the example to create your own config:
+
 ```bash
    cp src/main/resources/example-application.properties src/main/resources/application.properties
 ```
@@ -79,9 +87,11 @@ git clone https://github.com/Aldhafara/AstroSpotFinder.git
 ```
 
 2. Prepare your configuration:
+
 ```bash
    cp src/main/resources/example-application.properties src/main/resources/application.properties
 ```
+
 (then edit as needed)
 
 3. Start the application:
@@ -139,17 +149,31 @@ http://localhost:8080/swagger-ui.html
 ```
 
 You can explore, test, and understand all endpoints directly from your browser.
-_Planned: As new endpoints are implemented, they will be automatically documented here._
 
 ## API Endpoints
 
-| Endpoint  | Type | Description                                 | Status |
-|-----------|------|---------------------------------------------|--------|
-| /status   | GET  | Server status, uptime, timestamp            | ✅      |
+| Endpoint         | Type | Description                                                                            | Status |
+|------------------|------|----------------------------------------------------------------------------------------|--------|
+| /status          | GET  | Server status, uptime, timestamp                                                       | ✅      |
+| /astrospots/best | GET  | Finds the best astro observation spots based on location and radius (recursive search) | ✅      |
 
 ## API Request Parameters
 
-Planned features. Not yet implemented
+### for /astrospots/best
+
+| Parameter   | Type   | Description                                  |
+|-------------|--------|----------------------------------------------|
+| latitude    | double | Latitude of the search center                |
+| longitude   | double | Longitude of the search center               |
+| radiusKm    | double | Radius around center in kilometers to search |
+
+**Example requests:**
+
+```
+GET /astrospots/best?latitude=52.2298&longitude=21.0117&radiusKm=30
+```
+
+### for /status
 
 **Example requests:**
 
@@ -158,6 +182,23 @@ GET /status
 ```
 
 ## API Response Format
+
+### Example `/astrospots/best` Response
+
+Returns a list of LocationConditions objects representing the best spots, sorted by light pollution brightness.
+
+```json
+[
+  {
+    "coordinate": {
+      "latitude": 52.26864169801801,
+      "longitude": 20.896780418018018
+    },
+    "brightness": 12
+  },
+  //other points
+]
+```
 
 ### Example `/status` Response
 
@@ -179,12 +220,14 @@ GET /status
 
 ## Caching
 
-- Lookup results are cached (planned: per location for 1 hour).
-- First request may be slower (file read), subsequent ones are instant.
+- Light pollution data responses are cached internally by AstroSpotService using Spring Cache.
+- Cache keys are based on coordinate parameters.
+- Cached entries are not stored for failed requests (e.g., HTTP 429 errors cause exceptions and do not populate the cache).
+- This caching reduces redundant calls to the external LightPollutionService for improved performance.
 
 ## Rate Limiting
 
-- Planned: endpoint protection (e.g., /template-endpoint)—limit 20 requests/min/IP.
+- Planned: endpoint protection (e.g., /template-endpoint)-limit 20 requests/min/IP.
 - Exceeding the limit: HTTP 429.
 
 ## Error Handling
@@ -207,7 +250,7 @@ Planned features. Not yet implemented.
 Planned features. Not yet implemented.
 
 ```bash
-curl "http://localhost:8080/template-endpoint"
+curl "http://localhost:8080/astrospots/best?latitude=52.2298&longitude=21.0117&radiusKm=30"
 ```
 
 ## How to Test
@@ -220,7 +263,8 @@ Run tests:
 
 ## Troubleshooting
 
-- If you see errors about missing configuration, make sure `src/main/resources/application.properties` exists and is correctly filled.
+- If you see errors about missing configuration, make sure `src/main/resources/application.properties` exists and is
+  correctly filled.
 - For Docker users, you can mount your configuration file as a volume if not building it into the image directly.
 - Example Error:  
   `Could not resolve placeholder...`  
@@ -232,8 +276,8 @@ MIT
 
 ## TODO / Roadmap
 
-- [ ] /template-endpoint
-- [ ] Result caching
+- [X] /astrospots/best
+- [X] Result caching
 - [ ] Input parameter validation
 - [X] Global error handler
 - [ ] API documentation (Swagger/OpenAPI)
