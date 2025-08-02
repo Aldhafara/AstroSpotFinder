@@ -143,7 +143,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         stopWatch.start("searchBestSpotsRecursive [depth={}]");
         log.debug("searchBestSpotsRecursive [depth={}]: Parameters radiusKm={} depth={} maxDepth={}", searchParams.depth(), searchParams.searchContext().searchArea().radiusKm(), searchParams.depth(), searchParams.searchContext().maxDepth());
 
-        if (searchParams.depth() > searchParams.searchContext().maxDepth() || searchParams.searchContext().searchArea().radiusKm() < 0.035) {
+        if (isInvalidSearchParams(searchParams)) {
             log.debug("searchBestSpotsRecursive [depth={}]: invalid parameters radiusKm={} depth={} maxDepth={}", searchParams.depth(), searchParams.searchContext().searchArea().radiusKm(), searchParams.depth(), searchParams.searchContext().maxDepth());
             return Collections.emptyList();
         }
@@ -152,24 +152,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
         if (gridPoints.isEmpty()) {
             log.debug("searchBestSpotsRecursive [depth={}]: list gridPoints is empty, thickening the grid.", searchParams.depth());
-
-            SearchContext searchContext = SearchContext.builder()
-                    .maxDepth(searchParams.searchContext().maxDepth())
-                    .gridDiv(searchParams.searchContext().gridDiv())
-                    .searchArea(searchParams.searchContext().searchArea())
-                    .build();
-            GridSize nextGrid = GridSize.builder()
-                    .latitudeDegrees(searchParams.gridSize().latitudeDegrees() / searchParams.searchContext().gridDiv())
-                    .longitudeDegrees(searchParams.gridSize().longitudeDegrees() / searchParams.searchContext().gridDiv())
-                    .build();
-            SearchParams nextSearchParams = SearchParams.builder()
-                    .searchContext(searchContext)
-                    .gridSize(nextGrid)
-                    .depth(searchParams.depth())
-                    .originSearchArea(searchParams.originSearchArea())
-                    .build();
-
-            return searchBestSpotsRecursive(nextSearchParams);
+            return recursiveForEmptyGrid(searchParams);
         }
         log.debug("searchBestSpotsRecursive [depth={}]: list gridPoints has size {}", searchParams.depth(), gridPoints.size());
 
@@ -183,6 +166,25 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
         List<LocationConditions> result = new ArrayList<>(topSpots);
 
+        List<LocationConditions> subResults = recursiveSearchForTopSpots(searchParams, topSpots);
+
+        result.addAll(subResults.stream()
+                .filter(distinctByKey(loc -> List.of(loc.coordinate(), loc.brightness())))
+                .toList());
+
+        stopWatch.stop();
+        log.info("searchBestSpotsRecursive finished at depth={} in {} ms", searchParams.depth(), stopWatch.getTotalTimeMillis());
+        log.debug("searchBestSpotsRecursive finished at depth={} in {} ms, result size:{}", searchParams.depth(), stopWatch.getTotalTimeMillis(), result.size());
+
+        return result;
+    }
+
+    boolean isInvalidSearchParams(SearchParams searchParams) {
+        return searchParams.depth() > searchParams.searchContext().maxDepth()
+                || searchParams.searchContext().searchArea().radiusKm() < 0.035;
+    }
+
+    List<LocationConditions> recursiveSearchForTopSpots(SearchParams searchParams, List<LocationConditions> topSpots) {
         List<CompletableFuture<List<LocationConditions>>> futures = topSpots.stream()
                 .map(spot -> supplyAsync(() -> {
                     Coordinate subCenter = spot.coordinate();
@@ -211,7 +213,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                 }))
                 .toList();
 
-        List<LocationConditions> subResults = futures.stream()
+        return futures.stream()
                 .map(future -> {
                     try {
                         return future.join();
@@ -222,16 +224,26 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                 })
                 .flatMap(List::stream)
                 .toList();
+    }
 
-        result.addAll(subResults.stream()
-                .filter(distinctByKey(loc -> List.of(loc.coordinate(), loc.brightness())))
-                .toList());
+    List<LocationConditions> recursiveForEmptyGrid(SearchParams searchParams) {
+        SearchContext searchContext = SearchContext.builder()
+                .maxDepth(searchParams.searchContext().maxDepth())
+                .gridDiv(searchParams.searchContext().gridDiv())
+                .searchArea(searchParams.searchContext().searchArea())
+                .build();
+        GridSize nextGrid = GridSize.builder()
+                .latitudeDegrees(searchParams.gridSize().latitudeDegrees() / searchParams.searchContext().gridDiv())
+                .longitudeDegrees(searchParams.gridSize().longitudeDegrees() / searchParams.searchContext().gridDiv())
+                .build();
+        SearchParams nextSearchParams = SearchParams.builder()
+                .searchContext(searchContext)
+                .gridSize(nextGrid)
+                .depth(searchParams.depth())
+                .originSearchArea(searchParams.originSearchArea())
+                .build();
 
-        stopWatch.stop();
-        log.info("searchBestSpotsRecursive finished at depth={} in {} ms", searchParams.depth(), stopWatch.getTotalTimeMillis());
-        log.debug("searchBestSpotsRecursive finished at depth={} in {} ms, result size:{}", searchParams.depth(), stopWatch.getTotalTimeMillis(), result.size());
-
-        return result;
+        return searchBestSpotsRecursive(nextSearchParams);
     }
 
     private double calculateNewRadius(GridSize gridSize) {

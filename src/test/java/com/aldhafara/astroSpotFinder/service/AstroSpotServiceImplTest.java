@@ -21,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -28,6 +29,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class AstroSpotServiceImplTest {
@@ -47,8 +50,6 @@ public class AstroSpotServiceImplTest {
 
     @Test
     void findPointsWithinRadius_returnsEmptyForNonPositiveRadius() {
-        SearchArea originSearchArea = SearchArea.builder().center(center).radiusKm(1).build();
-
         List<Coordinate> resultZero = astroSpotService.findPointsWithinRadius(SearchArea.builder().center(center).radiusKm(0).build(), originSearchArea, gridSize);
         List<Coordinate> resultNegative = astroSpotService.findPointsWithinRadius(SearchArea.builder().center(center).radiusKm(-10).build(), originSearchArea, gridSize);
 
@@ -307,6 +308,92 @@ public class AstroSpotServiceImplTest {
         assertTrue(results.contains(locCond1));
     }
 
+    @Test
+    void testIsInvalidSearchParams_depthExceedsMax() {
+        SearchParams params = new SearchParams(
+                new SearchContext(2, 2, new SearchArea(new Coordinate(0, 0), 1)),
+                new GridSize(1.0, 1.0),
+                3,
+                new SearchArea(new Coordinate(0,0), 1)
+        );
+        assertTrue(astroSpotService.isInvalidSearchParams(params));
+    }
+
+    @Test
+    void testIsInvalidSearchParams_radiusTooSmall() {
+        SearchParams params = new SearchParams(
+                new SearchContext(5, 2, new SearchArea(new Coordinate(0, 0), 0.03)),
+                new GridSize(1.0, 1.0),
+                1,
+                new SearchArea(new Coordinate(0,0), 1)
+        );
+        assertTrue(astroSpotService.isInvalidSearchParams(params));
+    }
+
+    @Test
+    void testIsInvalidSearchParams_validParams() {
+        SearchParams params = new SearchParams(
+                new SearchContext(5, 2, new SearchArea(new Coordinate(0, 0), 1)),
+                new GridSize(1.0, 1.0),
+                1,
+                new SearchArea(new Coordinate(0,0), 1)
+        );
+        assertFalse(astroSpotService.isInvalidSearchParams(params));
+    }
+
+    @Test
+    void testRecursiveForEmptyGrid_callsSearchAgainWithSmallerGrid() {
+        AstroSpotServiceImpl spyService = spy(astroSpotService);
+        SearchArea originSearchArea = new SearchArea(new Coordinate(0,0), 10);
+        SearchArea searchArea = new SearchArea(new Coordinate(0,0), 10);
+        GridSize initialGrid = new GridSize(1.0, 1.0);
+        int depth = 0;
+
+        SearchContext context = new SearchContext(5, 2, searchArea);
+        SearchParams params = new SearchParams(context, initialGrid, depth, originSearchArea);
+
+        GridSize expectedSmallerGrid = new GridSize(0.5, 0.5);
+
+        doReturn(List.of(new LocationConditions(new Coordinate(1,2), 10.0)))
+                .when(spyService)
+                .searchBestSpotsRecursive(argThat(searchParams ->
+                        Double.compare(searchParams.gridSize().latitudeDegrees(), expectedSmallerGrid.latitudeDegrees()) == 0 &&
+                                Double.compare(searchParams.gridSize().longitudeDegrees(), expectedSmallerGrid.longitudeDegrees()) == 0 &&
+                                searchParams.depth() == depth
+                ));
+        List<LocationConditions> result = spyService.recursiveForEmptyGrid(params);
+
+        assertNotNull(result, "Result should not be null");
+        assertEquals(1, result.size(), "A mock list with one location should be returned");
+        verify(spyService, times(1)).searchBestSpotsRecursive(any(SearchParams.class));
+    }
+
+    @Test
+    void testRecursiveSearchForSpotsReturnsAggregatedResults() {
+        AstroSpotServiceImpl spyService = spy(astroSpotService);
+
+        SearchParams baseParams = new SearchParams(
+                new SearchContext(3, 2, new SearchArea(new Coordinate(0, 0), 10)),
+                new GridSize(1.0, 1.0),
+                0,
+                new SearchArea(new Coordinate(0,0), 10)
+        );
+
+        LocationConditions spot1 = new LocationConditions(new Coordinate(0.1, 0.1), 10);
+        LocationConditions spot2 = new LocationConditions(new Coordinate(0.2, 0.2), 20);
+
+        List<LocationConditions> topSpots = List.of(spot1, spot2);
+
+        doReturn(List.of(spot1))
+                .when(spyService).searchBestSpotsRecursive(any(SearchParams.class));
+
+
+        List<LocationConditions> results = spyService.recursiveSearchForTopSpots(baseParams, topSpots);
+
+        assertNotNull(results);
+        assertFalse(results.isEmpty(), "Result should not be empty");
+        assertTrue(results.contains(spot1), "Result should contain spot1");
+    }
 
     Coordinate center = new Coordinate(50, 20);
     GridSize gridSize = new GridSize(0.1, 0.1);
