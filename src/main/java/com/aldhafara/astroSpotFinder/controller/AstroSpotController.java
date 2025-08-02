@@ -48,7 +48,7 @@ public class AstroSpotController {
     public List<LocationConditions> searchBestSpots(
             @RequestParam @Min(-90) @Max(90) double latitude,
             @RequestParam @Min(-180) @Max(180) double longitude,
-            @RequestParam @Min(0) double radiusKm,
+            @RequestParam @Min(0)  @Max(150) double radiusKm,
             @RequestParam(required = false, defaultValue = "100") @Min(0) int maxResults
     ) {
         Coordinate center = new Coordinate(latitude, longitude);

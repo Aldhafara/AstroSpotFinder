@@ -184,16 +184,17 @@ You can explore, test, and understand all endpoints directly from your browser.
 
 ### for /astrospots/best
 
-| Parameter   | Type   | Description                                  | Allowed Values      |
-|-------------|--------|----------------------------------------------|---------------------|
-| latitude    | double | Latitude of the search center                | -90 to 90           |
-| longitude   | double | Longitude of the search center               | -180 to 180         |
-| radiusKm    | double | Radius around center in kilometers to search | >= 0 (non-negative) |
+| Parameter  | Type    | Description                                    | Allowed Values            |
+|------------|---------|------------------------------------------------|---------------------------|
+| latitude   | double  | Latitude of the search center                  | -90 to 90                 |
+| longitude  | double  | Longitude of the search center                 | -180 to 180               |
+| radiusKm   | double  | Radius around center in kilometers to search   | 0 to 150                  |
+| maxResults | integer | Maximum number of results returned by endpoint | >= 0 (defaultValue = 100) |
 
 **Example requests:**
 
 ```
-GET /astrospots/best?latitude=52.2298&longitude=21.0117&radiusKm=30
+GET /astrospots/best?latitude=52.2298&longitude=21.0117&radiusKm=30&maxResults=100
 ```
 
 ### for /status
@@ -271,7 +272,7 @@ Planned features. Not yet implemented.
 ## Example Usage
 
 ```bash
-curl "http://localhost:8080/astrospots/best?latitude=52.2298&longitude=21.0117&radiusKm=30"
+curl "http://localhost:8080/astrospots/best?latitude=52.2298&longitude=21.0117&radiusKm=30&maxResults=100"
 ```
 
 ## How to Test

@@ -87,6 +87,19 @@ class AstroSpotControllerTest {
     }
 
     @Test
+    void shouldReturnBadRequest_whenRadiusIsTooHigh() throws Exception {
+        mockMvc.perform(get("/astrospots/best")
+                        .param("latitude", "20")
+                        .param("longitude", "20")
+                        .param("radiusKm", "151")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Invalid request parameters"))
+                .andExpect(jsonPath("$.message").value("searchBestSpots.radiusKm: must be less than or equal to 150"));
+    }
+
+    @Test
     void shouldReturnBadRequest_whenLongitudeIsBadType() throws Exception {
         mockMvc.perform(get("/astrospots/best")
                         .param("latitude", "20")
