@@ -48,7 +48,8 @@ public class AstroSpotController {
     public List<LocationConditions> searchBestSpots(
             @RequestParam @Min(-90) @Max(90) double latitude,
             @RequestParam @Min(-180) @Max(180) double longitude,
-            @RequestParam @Min(0) double radiusKm
+            @RequestParam @Min(0) double radiusKm,
+            @RequestParam(required = false, defaultValue = "100") @Min(0) int maxResults
     ) {
         Coordinate center = new Coordinate(latitude, longitude);
         SearchArea searchArea = SearchArea.builder()
@@ -74,6 +75,11 @@ public class AstroSpotController {
 
         List<LocationConditions> locationsConditions = astroSpotService.searchBestSpotsRecursive(searchParams);
 
-        return astroSpotService.getTopLocationConditions(locationsConditions);
+        var results = astroSpotService.getTopLocationConditions(locationsConditions);
+        if (results.size() > maxResults) {
+            return results.subList(0, maxResults);
+        } else {
+            return results;
+        }
     }
 }
