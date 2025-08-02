@@ -34,8 +34,8 @@ planning astro-expeditions.
 
 Currently under development. Available now:
 
-- /status health-check endpoint (server status, uptime, timestamp)
-- /astrospots/best REST endpoint - finds the best astro observations spots in a radius around specified coordinates
+- `/status` health-check endpoint (server status, uptime, timestamp)
+- `/astrospots/best` REST endpoint - finds the best astro observations spots in a radius around specified coordinates
 - Recursive and asynchronous search algorithm leveraging parameter objects (SearchParams, SearchArea, SearchContext) for
   flexible, precise queries
 - Caching of light pollution data responses for improved performance and reduced external calls
@@ -51,9 +51,11 @@ site recommendations. For best results, the following services should be availab
   Supplies nighttime cloud cover and temperature forecasts.
 
 **Fallback/Dummy support:**
-If any of the required services are unavailable, AstroSpotFinder will attempt to substitute them with dummy (fallback)
-implementations to ensure the core application remains operational, though with limited accuracy.
-You can use the application in development mode or demo mode even without all external dependencies.
+AstroSpotFinder allows manual selection of a dummy (fallback) implementation for each required service via configuration.
+The dummy implementation can be enabled for development, demo or test scenarios by setting the appropriate property
+(e.g. `lightpollutionservice.provider=dummy`).
+**Note:** Fallback services are **not switched in automatically** if the external real service becomes unavailable at runtime.
+The choice of real or dummy service is determined only at application startup (based on configuration).
 
 You can find links to the sample implementations in the table below:
 
@@ -77,6 +79,27 @@ keys, etc.).
 ```
 
 2. Edit `src/main/resources/application.properties` and fill in the required values for your environment.
+
+**Choosing additional service implementation**
+You can select which additional service implementation (real or dummy) AstroSpotFinder will use by setting the following
+property (on LightPollutionService example):
+
+```text
+# Use 'dummy' to enable the built-in fallback service (suitable for development and testing)
+# Use 'real' (or leave unset) to use the production service and provide its URL
+lightpollutionservice.provider=dummy
+
+# If you use the real backend, specify the endpoint URL:
+lightpollutionservice.url=https://your-lightpollutionservice.url
+```
+
+- If `lightpollutionservice.provider=dummy` - the dummy fallback service will be used (no external requests).
+- If `lightpollutionservice.provider=real` or the property is unset - the real LightPollutionService will be used (you
+  must set `lightpollutionservice.url` to the backend address).
+
+**Note:**
+Switching between dummy/real services is always determined at application startup time. There is no automatic failover.
+Proceed similarly for other additional services. See [Required (or Recommended) Microservices](#required-or-recommended-microservices)
 
 ## How to Run
 
@@ -246,8 +269,6 @@ Planned features. Not yet implemented.
 ```
 
 ## Example Usage
-
-Planned features. Not yet implemented.
 
 ```bash
 curl "http://localhost:8080/astrospots/best?latitude=52.2298&longitude=21.0117&radiusKm=30"
