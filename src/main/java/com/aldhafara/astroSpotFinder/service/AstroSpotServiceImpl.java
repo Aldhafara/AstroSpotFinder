@@ -41,16 +41,19 @@ public class AstroSpotServiceImpl implements AstroSpotService {
     private final ExecutorService executorService;
     private final int topNumber;
     private final double topPercent;
+    private final int maxConcurrentThreads;
 
     public AstroSpotServiceImpl(LightPollutionService lightPollutionService,
                                 DistanceService distanceService,
                                 @Value("${astrospot.top.number}") int topNumber,
-                                @Value("${astrospot.top.percent}") double topPercent) {
+                                @Value("${astrospot.top.percent}") double topPercent,
+                                @Value("${astrospot.executor.max.concurrent.threads}") int maxConcurrentThreads) {
         this.lightPollutionService = lightPollutionService;
         this.distanceService = distanceService;
         this.executorService = Executors.newCachedThreadPool();
         this.topNumber = topNumber <= 0 ? 1 : topNumber;
         this.topPercent = topPercent > 100 ? 100 : topPercent;
+        this.maxConcurrentThreads = maxConcurrentThreads;
     }
 
     private static <T> Predicate<T> distinctByKey(Function<? super T, ?> keyExtractor) {
@@ -185,46 +188,56 @@ public class AstroSpotServiceImpl implements AstroSpotService {
     }
 
     List<LocationConditions> recursiveSearchForTopSpots(SearchParams searchParams, List<LocationConditions> topSpots) {
-        List<CompletableFuture<List<LocationConditions>>> futures = topSpots.stream()
+
+    List<LocationConditions> aggregatedResults = new ArrayList<>();
+
+    List<List<LocationConditions>> partitions = new ArrayList<>();
+    for (int i = 0; i < topSpots.size(); i += maxConcurrentThreads) {
+        int end = Math.min(i + maxConcurrentThreads, topSpots.size());
+        partitions.add(topSpots.subList(i, end));
+    }
+
+    for (List<LocationConditions> partition : partitions) {
+        List<CompletableFuture<List<LocationConditions>>> futures = partition.stream()
                 .map(spot -> supplyAsync(() -> {
                     Coordinate subCenter = spot.coordinate();
                     double nextRadius = calculateNewRadius(searchParams.gridSize());
-                    GridSize nextGrid = GridSize.builder()
-                            .latitudeDegrees(searchParams.gridSize().latitudeDegrees() / searchParams.searchContext().gridDiv())
-                            .longitudeDegrees(searchParams.gridSize().longitudeDegrees() / searchParams.searchContext().gridDiv())
-                            .build();
+                                        GridSize nextGrid = getNextGrid(searchParams);
 
-                    SearchContext searchContext = SearchContext.builder()
+                    SearchContext nextContext = SearchContext.builder()
                             .maxDepth(searchParams.searchContext().maxDepth())
                             .gridDiv(searchParams.searchContext().gridDiv())
-                            .searchArea(SearchArea.builder()
-                                    .center(subCenter)
-                                    .radiusKm(nextRadius)
-                                    .build())
+                            .searchArea(new SearchArea(subCenter, nextRadius))
                             .build();
 
-                    SearchParams nextSearchParams = SearchParams.builder()
-                            .searchContext(searchContext)
+                    SearchParams nextParams = SearchParams.builder()
+                            .searchContext(nextContext)
                             .gridSize(nextGrid)
                             .depth(searchParams.depth() + 1)
                             .originSearchArea(searchParams.originSearchArea())
                             .build();
-                    return searchBestSpotsRecursive(nextSearchParams);
+
+                    return searchBestSpotsRecursive(nextParams);
                 }))
                 .toList();
 
-        return futures.stream()
+        List<LocationConditions> partialResults = futures.stream()
                 .map(future -> {
                     try {
                         return future.join();
-                    } catch (CompletionException e) {
-                        log.error("Exception in recursive task", e);
+                    } catch (CompletionException ex) {
+                        log.error("Exception in async recursive task", ex);
                         return Collections.<LocationConditions>emptyList();
                     }
                 })
                 .flatMap(List::stream)
                 .toList();
+
+        aggregatedResults.addAll(partialResults);
     }
+
+    return aggregatedResults;
+}
 
     List<LocationConditions> recursiveForEmptyGrid(SearchParams searchParams) {
         SearchContext searchContext = SearchContext.builder()
@@ -232,10 +245,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                 .gridDiv(searchParams.searchContext().gridDiv())
                 .searchArea(searchParams.searchContext().searchArea())
                 .build();
-        GridSize nextGrid = GridSize.builder()
-                .latitudeDegrees(searchParams.gridSize().latitudeDegrees() / searchParams.searchContext().gridDiv())
-                .longitudeDegrees(searchParams.gridSize().longitudeDegrees() / searchParams.searchContext().gridDiv())
-                .build();
+        GridSize nextGrid = getNextGrid(searchParams);
         SearchParams nextSearchParams = SearchParams.builder()
                 .searchContext(searchContext)
                 .gridSize(nextGrid)
@@ -256,6 +266,13 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         double newRadius = Math.max(sideNorthSouth, sideEastWest) * 1.5;
         log.debug("calculateNewRadius for {}: {}", gridSize, newRadius);
         return newRadius;
+    }
+
+    private static GridSize getNextGrid(SearchParams searchParams) {
+        return GridSize.builder()
+                .latitudeDegrees(searchParams.gridSize().latitudeDegrees() / searchParams.searchContext().gridDiv())
+                .longitudeDegrees(searchParams.gridSize().longitudeDegrees() / searchParams.searchContext().gridDiv())
+                .build();
     }
 
     protected <T> CompletableFuture<T> supplyAsync(Supplier<T> supplier) {
