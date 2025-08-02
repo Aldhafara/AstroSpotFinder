@@ -1,6 +1,7 @@
 package com.aldhafara.astroSpotFinder.exception;
 
 import com.aldhafara.astroSpotFinder.model.ApiErrorResponse;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -20,6 +21,17 @@ public class GlobalExceptionHandler {
                 "Bad Request",
                 "Invalid parameter: " + ex.getName()
         ));
+    }
+
+    @ExceptionHandler({ConstraintViolationException.class})
+    public ResponseEntity<ApiErrorResponse> handleValidationException(ConstraintViolationException ex) {
+        return ResponseEntity
+                .badRequest().body(new ApiErrorResponse(
+                        Instant.now().toString(),
+                        400,
+                        "Invalid request parameters",
+                        ex.getMessage()
+                ));
     }
 
     @ExceptionHandler(Exception.class)

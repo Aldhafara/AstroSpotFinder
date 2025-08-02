@@ -184,11 +184,11 @@ You can explore, test, and understand all endpoints directly from your browser.
 
 ### for /astrospots/best
 
-| Parameter   | Type   | Description                                  |
-|-------------|--------|----------------------------------------------|
-| latitude    | double | Latitude of the search center                |
-| longitude   | double | Longitude of the search center               |
-| radiusKm    | double | Radius around center in kilometers to search |
+| Parameter   | Type   | Description                                  | Allowed Values      |
+|-------------|--------|----------------------------------------------|---------------------|
+| latitude    | double | Latitude of the search center                | -90 to 90           |
+| longitude   | double | Longitude of the search center               | -180 to 180         |
+| radiusKm    | double | Radius around center in kilometers to search | >= 0 (non-negative) |
 
 **Example requests:**
 
@@ -299,7 +299,7 @@ MIT
 
 - [X] /astrospots/best
 - [X] Result caching
-- [ ] Input parameter validation
+- [X] Input parameter validation
 - [X] Global error handler
 - [ ] API documentation (Swagger/OpenAPI)
 - [ ] Integration tests (MockMvc)

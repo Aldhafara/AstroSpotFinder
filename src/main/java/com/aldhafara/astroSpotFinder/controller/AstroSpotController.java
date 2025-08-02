@@ -7,8 +7,11 @@ import com.aldhafara.astroSpotFinder.model.SearchParams;
 import com.aldhafara.astroSpotFinder.model.SearchArea;
 import com.aldhafara.astroSpotFinder.model.SearchContext;
 import com.aldhafara.astroSpotFinder.service.AstroSpotService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -18,6 +21,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/astrospots")
+@Validated
 public class AstroSpotController {
 
     private final double gridLatDeg;
@@ -42,9 +46,9 @@ public class AstroSpotController {
 
     @GetMapping("/best")
     public List<LocationConditions> searchBestSpots(
-            @RequestParam double latitude,
-            @RequestParam double longitude,
-            @RequestParam double radiusKm
+            @RequestParam @Min(-90) @Max(90) double latitude,
+            @RequestParam @Min(-180) @Max(180) double longitude,
+            @RequestParam @Min(0) double radiusKm
     ) {
         Coordinate center = new Coordinate(latitude, longitude);
         SearchArea searchArea = SearchArea.builder()
