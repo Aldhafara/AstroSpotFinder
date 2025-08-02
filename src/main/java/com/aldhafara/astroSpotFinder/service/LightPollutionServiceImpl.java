@@ -18,7 +18,7 @@ import java.net.URI;
 import java.util.Optional;
 
 @Service
-@ConditionalOnProperty(prefix = "lightpollutionservice", name = "url")
+@ConditionalOnProperty(prefix = "lightpollutionservice", name = "provider", havingValue="real", matchIfMissing = true)
 public class LightPollutionServiceImpl implements LightPollutionService {
 
     private static final Logger log = LoggerFactory.getLogger(LightPollutionServiceImpl.class);

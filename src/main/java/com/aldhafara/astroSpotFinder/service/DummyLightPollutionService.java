@@ -4,14 +4,14 @@ import com.aldhafara.astroSpotFinder.model.Coordinate;
 import com.aldhafara.astroSpotFinder.model.LightPollutionInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
 @Service
-@ConditionalOnMissingBean(LightPollutionService.class)
+@ConditionalOnProperty(prefix = "lightpollutionservice", name = "provider", havingValue="dummy", matchIfMissing = false)
 public class DummyLightPollutionService implements LightPollutionService {
 
     private static final Logger log = LoggerFactory.getLogger(DummyLightPollutionService.class);
