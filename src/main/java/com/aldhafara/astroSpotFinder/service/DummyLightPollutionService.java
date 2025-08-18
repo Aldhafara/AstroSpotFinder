@@ -21,7 +21,7 @@ public class DummyLightPollutionService implements LightPollutionService {
     }
 
     @Override
-    @Cacheable("lightPollution_dummy")
+    @Cacheable("lightPollution.dummy")
     public Optional<LightPollutionInfo> getLightPollution(Coordinate coordinate) {
         double brightness = Math.random() * 255;
         log.info("Use DummyLightPollutionService receiving response for {} : {}", coordinate, brightness);
