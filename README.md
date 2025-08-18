@@ -56,13 +56,16 @@ The dummy implementation can be enabled for development, demo or test scenarios 
 (e.g. `lightpollutionservice.provider=dummy`).
 **Note:** Fallback services are **not switched in automatically** if the external real service becomes unavailable at runtime.
 The choice of real or dummy service is determined only at application startup (based on configuration).
+To use the real backend service instead of the dummy fallback, set the appropriate property
+(e.g. `lightpollutionservice.provider=real`) in your application.properties.
+Make sure to also provide the corresponding service URL using the respective configuration key.
 
 You can find links to the sample implementations in the table below:
 
-| Service Name          | Description                             | Repository                                         | Config Property           |
-|-----------------------|-----------------------------------------|----------------------------------------------------|---------------------------|
-| LightPollutionService | Sky darkness/light pollution data       | https://github.com/Aldhafara/LightPollutionService | lightpollutionservice.url |
-| WeatherForecastLite   | Nighttime weather forecast (cloud/temp) | https://github.com/Aldhafara/WeatherForecastLite   | weatherforecastlite.url   |
+| Service Name          | Description                             | Repository                                         | Config Property            |
+|-----------------------|-----------------------------------------|----------------------------------------------------|----------------------------|
+| LightPollutionService | Sky darkness/light pollution data       | https://github.com/Aldhafara/LightPollutionService | lightpollutionservice.url  |
+| WeatherForecastLite   | Nighttime weather forecast (cloud/temp) | https://github.com/Aldhafara/WeatherForecastLite   | weatherforecastservice.url |
 
 **Config Property** indicates the name of the configuration key in the application.properties file
 (or other configuration file) under which the URL of the corresponding running microservice should be provided.
