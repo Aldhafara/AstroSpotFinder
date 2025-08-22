@@ -120,7 +120,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
         List<LocationConditions> brightnessList = coordinates.stream()
                 .map(coord -> lightPollutionService.getLightPollution(coord)
-                        .map(info -> new LocationConditions(coord, info.relativeBrightness()))
+                        .map(info -> new LocationConditions(coord, info.relativeBrightness(), null, null))
                         .orElse(null))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());

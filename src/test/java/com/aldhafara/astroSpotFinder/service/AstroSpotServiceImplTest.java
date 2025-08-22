@@ -243,7 +243,7 @@ public class AstroSpotServiceImplTest {
             }
         }).when(spyService).findPointsWithinRadius(any(), any(), any());
 
-        doReturn(List.of(new LocationConditions(new Coordinate(1, 1), 0.5))).when(spyService).filterTopByBrightness(anyList());
+        doReturn(List.of(new LocationConditions(new Coordinate(1, 1), 0.5, null, null))).when(spyService).filterTopByBrightness(anyList());
 
         SearchArea originSearchArea = SearchArea.builder()
                 .center(center)
@@ -290,7 +290,7 @@ public class AstroSpotServiceImplTest {
         AstroSpotServiceImpl spyService = spy(astroSpotService);
 
         Coordinate spot1 = new Coordinate(1, 1);
-        LocationConditions locCond1 = new LocationConditions(spot1, 10);
+        LocationConditions locCond1 = new LocationConditions(spot1, 10, null, null);
         List<LocationConditions> topSpots = List.of(locCond1);
         List<Coordinate> gridPoints = List.of(spot1);
 
@@ -356,7 +356,7 @@ public class AstroSpotServiceImplTest {
 
         GridSize expectedSmallerGrid = new GridSize(0.5, 0.5);
 
-        doReturn(List.of(new LocationConditions(new Coordinate(1,2), 10.0)))
+        doReturn(List.of(new LocationConditions(new Coordinate(1,2), 10.0, null, null)))
                 .when(spyService)
                 .searchBestSpotsRecursive(argThat(searchParams ->
                         Double.compare(searchParams.gridSize().latitudeDegrees(), expectedSmallerGrid.latitudeDegrees()) == 0 &&
@@ -381,8 +381,8 @@ public class AstroSpotServiceImplTest {
                 new SearchArea(new Coordinate(0,0), 10)
         );
 
-        LocationConditions spot1 = new LocationConditions(new Coordinate(0.1, 0.1), 10);
-        LocationConditions spot2 = new LocationConditions(new Coordinate(0.2, 0.2), 20);
+        LocationConditions spot1 = new LocationConditions(new Coordinate(0.1, 0.1), 10, null, null);
+        LocationConditions spot2 = new LocationConditions(new Coordinate(0.2, 0.2), 20, null, null);
 
         List<LocationConditions> topSpots = List.of(spot1, spot2);
 
