@@ -1,5 +1,7 @@
 package com.aldhafara.astroSpotFinder.service;
 
+import com.aldhafara.astroSpotFinder.configuration.ExecutorConfig;
+import com.aldhafara.astroSpotFinder.configuration.TopLocationsConfig;
 import com.aldhafara.astroSpotFinder.model.Coordinate;
 import com.aldhafara.astroSpotFinder.model.GridSize;
 import com.aldhafara.astroSpotFinder.model.LightPollutionInfo;
@@ -45,7 +47,7 @@ public class AstroSpotServiceImplTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, distanceService, 3, 50, 2);
+        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, distanceService, new TopLocationsConfig(3, 50), new ExecutorConfig(2));
     }
 
     @Test
@@ -100,7 +102,7 @@ public class AstroSpotServiceImplTest {
 
     @Test
     void findPointsWithinRadius_handlesGridSizeNull_useDefaultGridSize() {
-        astroSpotService = new AstroSpotServiceImpl(null, distanceService, 5, 50, 2);
+        astroSpotService = new AstroSpotServiceImpl(null, distanceService, new TopLocationsConfig(5, 50), new ExecutorConfig(2));
         Coordinate center = new Coordinate(0, 0);
         double radiusKm = 15;
 
@@ -129,7 +131,7 @@ public class AstroSpotServiceImplTest {
 
     @Test
     void filterTopByBrightness_shouldReturnEmptyAndLogWarn_whenTopPercentBelowOrEqualZero() {
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, 3, 0, 2);
+        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, new TopLocationsConfig(3, 0), new ExecutorConfig(2));
         List<LocationConditions> result = astroSpotService.filterTopByBrightness(List.of(new Coordinate(10, 20)));
         assertTrue(result.isEmpty());
     }
@@ -148,7 +150,7 @@ public class AstroSpotServiceImplTest {
         when(lightPollutionService.getLightPollution(coords.get(2))).thenReturn(Optional.of(new LightPollutionInfo(30, 30, 0.5)));
         when(lightPollutionService.getLightPollution(coords.get(3))).thenReturn(Optional.of(new LightPollutionInfo(40, 40, 0.7)));
 
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, 3, 10, 2);
+        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, new TopLocationsConfig(3, 10), new ExecutorConfig(2));
 
         List<LocationConditions> result = astroSpotService.filterTopByBrightness(coords);
 
@@ -174,7 +176,7 @@ public class AstroSpotServiceImplTest {
                     .thenReturn(Optional.of(new LightPollutionInfo(coords.get(i).latitude(), coords.get(i).longitude(), 0.1 + 0.1 * i)));
         }
 
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, 1, 50, 2);
+        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, new TopLocationsConfig(1, 50), new ExecutorConfig(2));
 
         List<LocationConditions> result = astroSpotService.filterTopByBrightness(coords);
         assertEquals(3, result.size());
@@ -196,7 +198,7 @@ public class AstroSpotServiceImplTest {
         when(lightPollutionService.getLightPollution(coords.get(1))).thenReturn(Optional.of(new LightPollutionInfo(1, 1, 0.1)));
         when(lightPollutionService.getLightPollution(coords.get(2))).thenReturn(Optional.empty());
 
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, 1, 100, 2);
+        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, new TopLocationsConfig(1, 100), new ExecutorConfig(2));
 
         List<LocationConditions> result = astroSpotService.filterTopByBrightness(coords);
         assertEquals(1, result.size());
