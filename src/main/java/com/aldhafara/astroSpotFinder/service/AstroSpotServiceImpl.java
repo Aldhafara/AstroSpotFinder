@@ -5,9 +5,11 @@ import com.aldhafara.astroSpotFinder.configuration.TopLocationsConfig;
 import com.aldhafara.astroSpotFinder.model.Coordinate;
 import com.aldhafara.astroSpotFinder.model.GridSize;
 import com.aldhafara.astroSpotFinder.model.LocationConditions;
+import com.aldhafara.astroSpotFinder.model.ScoringParameters;
 import com.aldhafara.astroSpotFinder.model.SearchArea;
 import com.aldhafara.astroSpotFinder.model.SearchContext;
 import com.aldhafara.astroSpotFinder.model.SearchParams;
+import com.aldhafara.astroSpotFinder.model.SimplifiedLocationConditions;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -138,6 +141,12 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         int finalSize = Math.min(Math.max(limit, topNumber), list.size());
         log.debug("filterTopByBrightness() return {} of {} coordinates", finalSize, list.size());
         return sortedList.subList(0, finalSize);
+    }
+
+    @Override
+    public CompletableFuture<Map<String, List<SimplifiedLocationConditions>>> getBestSpotsWithWeatherScoring(List<LocationConditions> preliminaryLocations, ScoringParameters parameters, String timezone) {
+        log.warn("Method getBestSpotsWithWeatherScoring() not yet implemented");
+        return CompletableFuture.completedFuture(Collections.emptyMap());
     }
 
     @Override
