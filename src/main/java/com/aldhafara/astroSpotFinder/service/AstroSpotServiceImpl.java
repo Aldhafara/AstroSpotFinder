@@ -1,5 +1,7 @@
 package com.aldhafara.astroSpotFinder.service;
 
+import com.aldhafara.astroSpotFinder.configuration.ExecutorConfig;
+import com.aldhafara.astroSpotFinder.configuration.TopLocationsConfig;
 import com.aldhafara.astroSpotFinder.model.Coordinate;
 import com.aldhafara.astroSpotFinder.model.GridSize;
 import com.aldhafara.astroSpotFinder.model.LocationConditions;
@@ -9,7 +11,6 @@ import com.aldhafara.astroSpotFinder.model.SearchParams;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StopWatch;
 
@@ -45,15 +46,14 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
     public AstroSpotServiceImpl(LightPollutionService lightPollutionService,
                                 DistanceService distanceService,
-                                @Value("${astrospot.top.number}") int topNumber,
-                                @Value("${astrospot.top.percent}") double topPercent,
-                                @Value("${astrospot.executor.max.concurrent.threads}") int maxConcurrentThreads) {
+                                TopLocationsConfig topLocationsConfig,
+                                ExecutorConfig executorConfig) {
         this.lightPollutionService = lightPollutionService;
         this.distanceService = distanceService;
         this.executorService = Executors.newCachedThreadPool();
-        this.topNumber = topNumber <= 0 ? 1 : topNumber;
-        this.topPercent = topPercent > 100 ? 100 : topPercent;
-        this.maxConcurrentThreads = maxConcurrentThreads;
+        this.topNumber = topLocationsConfig.number() <= 0 ? 1 : topLocationsConfig.number();
+        this.topPercent = topLocationsConfig.percent() > 100 ? 100 : topLocationsConfig.percent();
+        this.maxConcurrentThreads = executorConfig.threads();
     }
 
     private static <T> Predicate<T> distinctByKey(Function<? super T, ?> keyExtractor) {
