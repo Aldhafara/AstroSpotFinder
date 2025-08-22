@@ -10,6 +10,7 @@ import com.aldhafara.astroSpotFinder.model.SearchArea;
 import com.aldhafara.astroSpotFinder.model.SearchContext;
 import com.aldhafara.astroSpotFinder.model.SearchParams;
 import com.aldhafara.astroSpotFinder.model.SimplifiedLocationConditions;
+import com.aldhafara.astroSpotFinder.model.WeatherForecastResponse;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,16 +44,22 @@ public class AstroSpotServiceImpl implements AstroSpotService {
     private final LightPollutionService lightPollutionService;
     private final DistanceService distanceService;
     private final ExecutorService executorService;
+    private final WeatherForecastService weatherForecastService;
+    private final LocationScorer locationScorer;
     private final int topNumber;
     private final double topPercent;
     private final int maxConcurrentThreads;
 
     public AstroSpotServiceImpl(LightPollutionService lightPollutionService,
                                 DistanceService distanceService,
+                                WeatherForecastService weatherForecastService,
+                                LocationScorer locationScorer,
                                 TopLocationsConfig topLocationsConfig,
                                 ExecutorConfig executorConfig) {
         this.lightPollutionService = lightPollutionService;
         this.distanceService = distanceService;
+        this.weatherForecastService = weatherForecastService;
+        this.locationScorer = locationScorer;
         this.executorService = Executors.newCachedThreadPool();
         this.topNumber = topLocationsConfig.number() <= 0 ? 1 : topLocationsConfig.number();
         this.topPercent = topLocationsConfig.percent() > 100 ? 100 : topLocationsConfig.percent();
@@ -62,6 +69,13 @@ public class AstroSpotServiceImpl implements AstroSpotService {
     private static <T> Predicate<T> distinctByKey(Function<? super T, ?> keyExtractor) {
         Set<Object> seen = ConcurrentHashMap.newKeySet();
         return t -> seen.add(keyExtractor.apply(t));
+    }
+
+    private static GridSize getNextGrid(SearchParams searchParams) {
+        return GridSize.builder()
+                .latitudeDegrees(searchParams.gridSize().latitudeDegrees() / searchParams.searchContext().gridDiv())
+                .longitudeDegrees(searchParams.gridSize().longitudeDegrees() / searchParams.searchContext().gridDiv())
+                .build();
     }
 
     @Override
@@ -145,8 +159,28 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
     @Override
     public CompletableFuture<Map<String, List<SimplifiedLocationConditions>>> getBestSpotsWithWeatherScoring(List<LocationConditions> preliminaryLocations, ScoringParameters parameters, String timezone) {
-        log.warn("Method getBestSpotsWithWeatherScoring() not yet implemented");
-        return CompletableFuture.completedFuture(Collections.emptyMap());
+        List<CompletableFuture<LocationConditions>> futures = preliminaryLocations.stream()
+                .map(location -> weatherForecastService.getNightForecast(location.coordinate(), timezone)
+                        .thenApply(weather -> mergeWeatherIntoLocation(location, weather))
+                )
+                .toList();
+
+        CompletableFuture<Void> allDone = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+
+        return allDone.thenApply(v -> {
+            List<LocationConditions> locationsWithWeather = futures.stream()
+                    .map(CompletableFuture::join)
+                    .collect(Collectors.toList());
+
+            return locationScorer.scoreAndSortLocations(locationsWithWeather, parameters);
+        });
+    }
+
+    private LocationConditions mergeWeatherIntoLocation(LocationConditions location, WeatherForecastResponse weather) {
+        return new LocationConditions(location.coordinate(),
+                location.brightness(),
+                weather,
+                location.score());
     }
 
     @Override
@@ -198,55 +232,55 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
     List<LocationConditions> recursiveSearchForTopSpots(SearchParams searchParams, List<LocationConditions> topSpots) {
 
-    List<LocationConditions> aggregatedResults = new ArrayList<>();
+        List<LocationConditions> aggregatedResults = new ArrayList<>();
 
-    List<List<LocationConditions>> partitions = new ArrayList<>();
-    for (int i = 0; i < topSpots.size(); i += maxConcurrentThreads) {
-        int end = Math.min(i + maxConcurrentThreads, topSpots.size());
-        partitions.add(topSpots.subList(i, end));
+        List<List<LocationConditions>> partitions = new ArrayList<>();
+        for (int i = 0; i < topSpots.size(); i += maxConcurrentThreads) {
+            int end = Math.min(i + maxConcurrentThreads, topSpots.size());
+            partitions.add(topSpots.subList(i, end));
+        }
+
+        for (List<LocationConditions> partition : partitions) {
+            List<CompletableFuture<List<LocationConditions>>> futures = partition.stream()
+                    .map(spot -> supplyAsync(() -> {
+                        Coordinate subCenter = spot.coordinate();
+                        double nextRadius = calculateNewRadius(searchParams.gridSize());
+                        GridSize nextGrid = getNextGrid(searchParams);
+
+                        SearchContext nextContext = SearchContext.builder()
+                                .maxDepth(searchParams.searchContext().maxDepth())
+                                .gridDiv(searchParams.searchContext().gridDiv())
+                                .searchArea(new SearchArea(subCenter, nextRadius))
+                                .build();
+
+                        SearchParams nextParams = SearchParams.builder()
+                                .searchContext(nextContext)
+                                .gridSize(nextGrid)
+                                .depth(searchParams.depth() + 1)
+                                .originSearchArea(searchParams.originSearchArea())
+                                .build();
+
+                        return searchBestSpotsRecursive(nextParams);
+                    }))
+                    .toList();
+
+            List<LocationConditions> partialResults = futures.stream()
+                    .map(future -> {
+                        try {
+                            return future.join();
+                        } catch (CompletionException ex) {
+                            log.error("Exception in async recursive task", ex);
+                            return Collections.<LocationConditions>emptyList();
+                        }
+                    })
+                    .flatMap(List::stream)
+                    .toList();
+
+            aggregatedResults.addAll(partialResults);
+        }
+
+        return aggregatedResults;
     }
-
-    for (List<LocationConditions> partition : partitions) {
-        List<CompletableFuture<List<LocationConditions>>> futures = partition.stream()
-                .map(spot -> supplyAsync(() -> {
-                    Coordinate subCenter = spot.coordinate();
-                    double nextRadius = calculateNewRadius(searchParams.gridSize());
-                                        GridSize nextGrid = getNextGrid(searchParams);
-
-                    SearchContext nextContext = SearchContext.builder()
-                            .maxDepth(searchParams.searchContext().maxDepth())
-                            .gridDiv(searchParams.searchContext().gridDiv())
-                            .searchArea(new SearchArea(subCenter, nextRadius))
-                            .build();
-
-                    SearchParams nextParams = SearchParams.builder()
-                            .searchContext(nextContext)
-                            .gridSize(nextGrid)
-                            .depth(searchParams.depth() + 1)
-                            .originSearchArea(searchParams.originSearchArea())
-                            .build();
-
-                    return searchBestSpotsRecursive(nextParams);
-                }))
-                .toList();
-
-        List<LocationConditions> partialResults = futures.stream()
-                .map(future -> {
-                    try {
-                        return future.join();
-                    } catch (CompletionException ex) {
-                        log.error("Exception in async recursive task", ex);
-                        return Collections.<LocationConditions>emptyList();
-                    }
-                })
-                .flatMap(List::stream)
-                .toList();
-
-        aggregatedResults.addAll(partialResults);
-    }
-
-    return aggregatedResults;
-}
 
     List<LocationConditions> recursiveForEmptyGrid(SearchParams searchParams) {
         SearchContext searchContext = SearchContext.builder()
@@ -275,13 +309,6 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         double newRadius = Math.max(sideNorthSouth, sideEastWest) * 1.5;
         log.debug("calculateNewRadius for {}: {}", gridSize, newRadius);
         return newRadius;
-    }
-
-    private static GridSize getNextGrid(SearchParams searchParams) {
-        return GridSize.builder()
-                .latitudeDegrees(searchParams.gridSize().latitudeDegrees() / searchParams.searchContext().gridDiv())
-                .longitudeDegrees(searchParams.gridSize().longitudeDegrees() / searchParams.searchContext().gridDiv())
-                .build();
     }
 
     protected <T> CompletableFuture<T> supplyAsync(Supplier<T> supplier) {
