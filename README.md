@@ -39,6 +39,8 @@ Currently under development. Available now:
 - Recursive and asynchronous search algorithm leveraging parameter objects (SearchParams, SearchArea, SearchContext) for
   flexible, precise queries
 - Caching of light pollution data responses for improved performance and reduced external calls
+- `/astrospots/best-scored` POST endpoint - accepts a list of preliminary spots and scoring parameters, returns best scored locations with weather integration
+- Advanced scoring system integrating weather data and configurable weights for better location evaluation
 
 ## Required (or Recommended) Microservices
 
@@ -178,10 +180,11 @@ You can explore, test, and understand all endpoints directly from your browser.
 
 ## API Endpoints
 
-| Endpoint         | Type | Description                                                                            | Status |
-|------------------|------|----------------------------------------------------------------------------------------|--------|
-| /status          | GET  | Server status, uptime, timestamp                                                       | ✅      |
-| /astrospots/best | GET  | Finds the best astro observation spots based on location and radius (recursive search) | ✅      |
+| Endpoint                | Type | Description                                                                            | Status |
+|-------------------------|------|----------------------------------------------------------------------------------------|--------|
+| /status                 | GET  | Server status, uptime, timestamp                                                       | ✅      |
+| /astrospots/best        | GET  | Finds the best astro observation spots based on location and radius (recursive search) | ✅      |
+| /astrospots/best-scored | POST | Accepts preliminary locations & scoring params, returns best scored spots with weather | ✅      |
 
 ## API Request Parameters
 
@@ -198,6 +201,36 @@ You can explore, test, and understand all endpoints directly from your browser.
 
 ```
 GET /astrospots/best?latitude=52.2298&longitude=21.0117&radiusKm=30&maxResults=100
+```
+
+### for /astrospots/best-scored
+
+| Parameter    | Type    | Description                                                                                                                                        |
+|--------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------|
+| parameters   | json    | Optional `ScoringParameters` via request parameter to control scoring weights and hours analysed                                                   |
+| Request body | json    | JSON array of `LocationConditions` objects (coordinates, brightness, weather, partial scoring), consistent with the answer from `/astrospots/best` |
+
+**Example parameters:**
+
+```json
+{
+  "weights": {
+    "wLightPollution": 0.4,
+    "wDistance": 0.2,
+    "wCloudCover": 0.15,
+    "wVisibility": 0.15,
+    "wWindSpeed": 0.05,
+    "wWindGust": 0.05
+  },
+  "hourFrom": 21,
+  "hourTo": 6
+}
+```
+
+**Example requests:**
+
+```
+POST /astrospots/best-scored
 ```
 
 ### for /status
@@ -221,9 +254,51 @@ Returns a list of LocationConditions objects representing the best spots, sorted
       "latitude": 52.26864169801801,
       "longitude": 20.896780418018018
     },
-    "brightness": 12
+    "brightness": 12,
+    "weather": null,
+    "score": null
   },
   //other points
+]
+```
+
+### Example for `/astrospots/best-scored`:
+
+```json
+[
+  {
+    "coordinate": {
+      "latitude": 52.232222,
+      "longitude": 21.008333
+    },
+    "brightness": 1.0,
+    "hourlyUnits": {
+      "time": "iso8601",
+      "cloudCover": "%",
+      "temperature_2m": "°C",
+      "visibility": "m",
+      "windspeed_10m": "m/s",
+      "windgusts_10m": "m/s"
+    },
+    "data": {
+      "period": "2025-08-29/2025-08-30",
+      "moon_illumination": 0,
+      "hours": [
+        {
+          "timestamp": 1756501200,
+          "hour": "21:00",
+          "temperature": 21.1,
+          "cloudcover": 100,
+          "visibility": 24140,
+          "windspeed": 0.54,
+          "windgust": 2.3
+        },
+        ...
+      ]
+    },
+    "score": 0.611014705882353
+  },
+  ...
 ]
 ```
 
