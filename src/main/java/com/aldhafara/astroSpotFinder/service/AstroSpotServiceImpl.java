@@ -39,7 +39,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
     private static final Logger log = LoggerFactory.getLogger(AstroSpotServiceImpl.class);
 
-    private static final double KM_PER_DEGREE = 111.0;
+    private static final double KM_PER_DEGREE = 65.4;
 
     private final LightPollutionService lightPollutionService;
     private final DistanceService distanceService;
@@ -99,8 +99,16 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         double minLon = centerLon - radiusInDegrees;
         double maxLon = centerLon + radiusInDegrees;
 
-        for (double lat = minLat; lat <= maxLat; lat += gridSize.latitudeDegrees()) {
-            for (double lon = minLon; lon <= maxLon; lon += gridSize.longitudeDegrees()) {
+        double gridLatDeg = gridSize.latitudeDegrees();
+        double gridLonDeg = gridSize.longitudeDegrees();
+
+        double minLatGrid = alignToGridLower(minLat, gridLatDeg);
+        double maxLatGrid = alignToGridUpper(maxLat, gridLatDeg);
+        double minLonGrid = alignToGridLower(minLon, gridLonDeg);
+        double maxLonGrid = alignToGridUpper(maxLon, gridLonDeg);
+
+        for (double lat = minLatGrid; lat <= maxLatGrid; lat += gridLatDeg) {
+            for (double lon = minLonGrid; lon <= maxLonGrid; lon += gridLonDeg) {
                 double distance = distanceService.findDistance(new Coordinate(centerLat, centerLon), new Coordinate(lat, lon));
                 double distanceFromOrigin = distanceService.findDistance(originSearchArea.center(), new Coordinate(lat, lon));
                 if (distance <= searchArea.radiusKm() && distanceFromOrigin <= originSearchArea.radiusKm()) {
@@ -121,6 +129,14 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         return coordinates;
     }
 
+    private double alignToGridLower(double value, double gridStep) {
+        return Math.floor(value / gridStep) * gridStep;
+    }
+
+    private double alignToGridUpper(double value, double gridStep) {
+        return Math.ceil(value / gridStep) * gridStep;
+    }
+
     @Override
     public List<LocationConditions> filterTopByBrightness(List<Coordinate> coordinates) {
         if (coordinates == null || coordinates.isEmpty()) {
@@ -135,7 +151,8 @@ public class AstroSpotServiceImpl implements AstroSpotService {
             log.warn("The percentage of coordinates examined is set to high ({}%). This may negatively impact performance.", topPercent);
         }
 
-        List<LocationConditions> brightnessList = coordinates.stream()
+        List<LocationConditions> brightnessList = coordinates.parallelStream()
+                .distinct()
                 .map(coord -> lightPollutionService.getLightPollution(coord)
                         .map(info -> new LocationConditions(coord, info.relativeBrightness(), null, null))
                         .orElse(null))

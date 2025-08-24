@@ -43,7 +43,7 @@ import static org.mockito.Mockito.when;
 
 public class AstroSpotServiceImplTest {
 
-    private static final double KM_PER_DEGREE = 111.0;
+    private static final double KM_PER_DEGREE = 65.4;
     Coordinate center = new Coordinate(50, 20);
     GridSize gridSize = new GridSize(0.1, 0.1);
     SearchArea originSearchArea = SearchArea.builder().center(center).radiusKm(1).build();
@@ -121,13 +121,21 @@ public class AstroSpotServiceImplTest {
 
         when(distanceService.findDistance(any(), any())).thenReturn(0.0);
 
-        List<Coordinate> results = astroSpotService.findPointsWithinRadius(SearchArea.builder().center(center).radiusKm(radiusKm).build(), originSearchArea, new GridSize(0.09, 0.15));
+        List<Coordinate> results = astroSpotService.findPointsWithinRadius(
+                SearchArea.builder().center(center).radiusKm(radiusKm).build(),
+                originSearchArea,
+                new GridSize(0.09, 0.15)
+        );
 
         assertFalse(results.isEmpty());
 
         Coordinate first = results.getFirst();
-        assertTrue(first.latitude() >= center.latitude() - (radiusKm / KM_PER_DEGREE));
-        assertTrue(first.longitude() >= center.longitude() - (radiusKm / KM_PER_DEGREE));
+        double radiusInDegrees = radiusKm / KM_PER_DEGREE;
+        double minLatGrid = Math.floor((center.latitude() - radiusInDegrees) / 0.09) * 0.09;
+        double minLonGrid = Math.floor((center.longitude() - radiusInDegrees) / 0.15) * 0.15;
+
+        assertTrue(first.latitude() >= minLatGrid);
+        assertTrue(first.longitude() >= minLonGrid);
     }
 
     @Test
