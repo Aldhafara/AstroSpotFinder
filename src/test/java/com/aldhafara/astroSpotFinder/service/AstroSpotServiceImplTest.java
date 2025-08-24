@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -60,7 +62,7 @@ public class AstroSpotServiceImplTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, distanceService, weatherForecastService, locationScorer, new TopLocationsConfig(3, 50), new ExecutorConfig(2));
+        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, distanceService, weatherForecastService, locationScorer, new TopLocationsConfig(3, 50, false), new ExecutorConfig(2));
     }
 
     @Test
@@ -115,7 +117,7 @@ public class AstroSpotServiceImplTest {
 
     @Test
     void findPointsWithinRadius_handlesGridSizeNull_useDefaultGridSize() {
-        astroSpotService = new AstroSpotServiceImpl(null, distanceService, null, null, new TopLocationsConfig(5, 50), new ExecutorConfig(2));
+        astroSpotService = new AstroSpotServiceImpl(null, distanceService, null, null, new TopLocationsConfig(5, 50, false), new ExecutorConfig(2));
         Coordinate center = new Coordinate(0, 0);
         double radiusKm = 15;
 
@@ -152,7 +154,7 @@ public class AstroSpotServiceImplTest {
 
     @Test
     void filterTopByBrightness_shouldReturnEmptyAndLogWarn_whenTopPercentBelowOrEqualZero() {
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(3, 0), new ExecutorConfig(2));
+        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(3, 0, false), new ExecutorConfig(2));
         List<LocationConditions> result = astroSpotService.filterTopByBrightness(List.of(new Coordinate(10, 20)));
         assertTrue(result.isEmpty());
     }
@@ -171,7 +173,7 @@ public class AstroSpotServiceImplTest {
         when(lightPollutionService.getLightPollution(coords.get(2))).thenReturn(Optional.of(new LightPollutionInfo(30, 30, 0.5)));
         when(lightPollutionService.getLightPollution(coords.get(3))).thenReturn(Optional.of(new LightPollutionInfo(40, 40, 0.7)));
 
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(3, 10), new ExecutorConfig(2));
+        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(3, 10, false), new ExecutorConfig(2));
 
         List<LocationConditions> result = astroSpotService.filterTopByBrightness(coords);
 
@@ -197,7 +199,7 @@ public class AstroSpotServiceImplTest {
                     .thenReturn(Optional.of(new LightPollutionInfo(coords.get(i).latitude(), coords.get(i).longitude(), 0.1 + 0.1 * i)));
         }
 
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(1, 50), new ExecutorConfig(2));
+        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(1, 50, false), new ExecutorConfig(2));
 
         List<LocationConditions> result = astroSpotService.filterTopByBrightness(coords);
         assertEquals(3, result.size());
@@ -219,7 +221,7 @@ public class AstroSpotServiceImplTest {
         when(lightPollutionService.getLightPollution(coords.get(1))).thenReturn(Optional.of(new LightPollutionInfo(1, 1, 0.1)));
         when(lightPollutionService.getLightPollution(coords.get(2))).thenReturn(Optional.empty());
 
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(1, 100), new ExecutorConfig(2));
+        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(1, 100, false), new ExecutorConfig(2));
 
         List<LocationConditions> result = astroSpotService.filterTopByBrightness(coords);
         assertEquals(1, result.size());
@@ -461,5 +463,52 @@ public class AstroSpotServiceImplTest {
 
         verify(weatherForecastService, times(preliminaryLocations.size())).getNightForecast(any(Coordinate.class), eq(timezone));
         verify(locationScorer, times(1)).scoreAndSortLocations(anyList(), eq(scoringParameters));
+    }
+
+    @Test
+    void getTopLocationConditions_withoutTies_returnsLimitedTop() {
+        List<LocationConditions> input = IntStream.rangeClosed(1, 7)
+                .mapToObj(i -> new LocationConditions(new Coordinate(i, i), 0.1 * i, null, null))
+                .collect(Collectors.toList());
+
+        astroSpotService = new AstroSpotServiceImpl(
+                lightPollutionService,
+                distanceService,
+                weatherForecastService,
+                locationScorer,
+                new TopLocationsConfig(3, 10, false),
+                new ExecutorConfig(2));
+
+        List<LocationConditions> result = astroSpotService.getTopLocationConditions(input);
+
+        assertEquals(3, result.size());
+        assertEquals(0.1, result.get(0).brightness(), 0.0001);
+        assertEquals(0.3, result.get(2).brightness(), 0.0001);
+    }
+
+    @Test
+    void getTopLocationConditions_withTies_returnsExtendedTop() {
+        List<LocationConditions> input = List.of(
+                new LocationConditions(new Coordinate(1, 1), 0.1, null, null),
+                new LocationConditions(new Coordinate(2, 2), 0.2, null, null),
+                new LocationConditions(new Coordinate(3, 3), 0.3, null, null),
+                new LocationConditions(new Coordinate(4, 4), 0.3, null, null),
+                new LocationConditions(new Coordinate(5, 5), 0.3, null, null),
+                new LocationConditions(new Coordinate(6, 6), 0.4, null, null),
+                new LocationConditions(new Coordinate(7, 7), 0.5, null, null));
+
+        astroSpotService = new AstroSpotServiceImpl(
+                lightPollutionService,
+                distanceService,
+                weatherForecastService,
+                locationScorer,
+                new TopLocationsConfig(3, 10, true),
+                new ExecutorConfig(2));
+
+        List<LocationConditions> result = astroSpotService.getTopLocationConditions(input);
+
+        assertEquals(5, result.size());
+
+        assertTrue(result.stream().allMatch(loc -> loc.brightness() <= 0.3));
     }
 }

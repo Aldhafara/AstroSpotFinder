@@ -48,6 +48,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
     private final LocationScorer locationScorer;
     private final int topNumber;
     private final double topPercent;
+    private boolean filterWithTies;
     private final int maxConcurrentThreads;
 
     public AstroSpotServiceImpl(LightPollutionService lightPollutionService,
@@ -63,6 +64,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         this.executorService = Executors.newCachedThreadPool();
         this.topNumber = topLocationsConfig.number() <= 0 ? 1 : topLocationsConfig.number();
         this.topPercent = topLocationsConfig.percent() > 100 ? 100 : topLocationsConfig.percent();
+        this.filterWithTies = topLocationsConfig.extended();
         this.maxConcurrentThreads = executorConfig.threads();
     }
 
@@ -167,11 +169,28 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         List<LocationConditions> sortedList = list.stream()
                 .sorted(Comparator.comparingDouble(LocationConditions::brightness))
                 .toList();
-        int limit = (int) Math.ceil(list.size() * (topPercent / 100.0));
 
+        int limit = (int) Math.ceil(list.size() * (topPercent / 100.0));
         int finalSize = Math.min(Math.max(limit, topNumber), list.size());
-        log.debug("filterTopByBrightness() return {} of {} coordinates", finalSize, list.size());
-        return sortedList.subList(0, finalSize);
+
+        if (finalSize == 0) {
+            return Collections.emptyList();
+        }
+
+        if (filterWithTies) {
+            double thresholdBrightness = sortedList.get(finalSize - 1).brightness();
+
+            List<LocationConditions> extendedList = sortedList.stream()
+                    .takeWhile(loc -> loc.brightness() <= thresholdBrightness)
+                    .toList();
+
+            log.debug("filterTopByBrightness() return {} of {} coordinates (with ties)", extendedList.size(), list.size());
+
+            return extendedList;
+        } else {
+            log.debug("filterTopByBrightness() return {} of {} coordinates", finalSize, list.size());
+            return sortedList.subList(0, finalSize);
+        }
     }
 
     @Override
