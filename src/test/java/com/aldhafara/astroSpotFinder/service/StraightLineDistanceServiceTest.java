@@ -34,8 +34,6 @@ class StraightLineDistanceServiceTest {
         Set<ConstraintViolation<Coordinate>> violations = validator.validate(invalid);
         assertFalse(violations.isEmpty());
 
-        violations.forEach(v -> System.out.println(v.getPropertyPath() + ": " + v.getMessage()));
-
         assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("latitude")));
         assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("longitude")));
     }

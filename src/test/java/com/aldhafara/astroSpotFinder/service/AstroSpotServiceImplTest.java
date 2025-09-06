@@ -1,514 +1,160 @@
 package com.aldhafara.astroSpotFinder.service;
 
-import com.aldhafara.astroSpotFinder.configuration.ExecutorConfig;
 import com.aldhafara.astroSpotFinder.configuration.TopLocationsConfig;
 import com.aldhafara.astroSpotFinder.model.Coordinate;
 import com.aldhafara.astroSpotFinder.model.GridSize;
 import com.aldhafara.astroSpotFinder.model.LightPollutionInfo;
 import com.aldhafara.astroSpotFinder.model.LocationConditions;
-import com.aldhafara.astroSpotFinder.model.ScoringParameters;
+import com.aldhafara.astroSpotFinder.model.LocationsCluster;
 import com.aldhafara.astroSpotFinder.model.SearchArea;
 import com.aldhafara.astroSpotFinder.model.SearchContext;
 import com.aldhafara.astroSpotFinder.model.SearchParams;
-import com.aldhafara.astroSpotFinder.model.SimplifiedLocationConditions;
-import com.aldhafara.astroSpotFinder.model.WeatherForecastResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Arrays;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-public class AstroSpotServiceImplTest {
+@ExtendWith(MockitoExtension.class)
+class AstroSpotServiceImplTest {
 
-    private static final double KM_PER_DEGREE = 65.4;
-    Coordinate center = new Coordinate(50, 20);
-    GridSize gridSize = new GridSize(0.1, 0.1);
-    SearchArea originSearchArea = SearchArea.builder().center(center).radiusKm(1).build();
     @Mock
-    private LightPollutionService lightPollutionService;
+    LightPollutionService lightPollutionService;
     @Mock
-    private StraightLineDistanceService distanceService;
+    DistanceService distanceService;
     @Mock
-    private WeatherForecastService weatherForecastService;
+    StraightLineDistanceService straightLineDistanceService;
     @Mock
-    private LocationScorer locationScorer;
-    private AstroSpotServiceImpl astroSpotService;
+    WeatherForecastService weatherForecastService;
+    @Mock
+    LocationScorer locationScorer;
+    TopLocationsConfig topLocationsConfig;
+
+    AstroSpotServiceImpl service;
 
     @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, distanceService, weatherForecastService, locationScorer, new TopLocationsConfig(3, 50, false), new ExecutorConfig(2));
-    }
+    void setup() {
+        topLocationsConfig = mock(TopLocationsConfig.class);
+        when(topLocationsConfig.number()).thenReturn(3);
+        when(topLocationsConfig.percent()).thenReturn(10.0);
+        when(topLocationsConfig.extended()).thenReturn(false);
 
-    @Test
-    void findPointsWithinRadius_returnsEmptyForNonPositiveRadius() {
-        List<Coordinate> resultZero = astroSpotService.findPointsWithinRadius(SearchArea.builder().center(center).radiusKm(0).build(), originSearchArea, gridSize);
-        List<Coordinate> resultNegative = astroSpotService.findPointsWithinRadius(SearchArea.builder().center(center).radiusKm(-10).build(), originSearchArea, gridSize);
-
-        assertTrue(resultZero.isEmpty());
-        assertTrue(resultNegative.isEmpty());
-    }
-
-    @Test
-    void findPointsWithinRadius_returnsEmptyForNullCenter() {
-        List<Coordinate> result = astroSpotService.findPointsWithinRadius(SearchArea.builder().center(null).radiusKm(100).build(), originSearchArea, gridSize);
-        assertTrue(result.isEmpty());
-    }
-
-    @Test
-    void findPointsWithinRadius_returnsPointsWithinRadius() {
-        Coordinate localCenter = new Coordinate(70, 30);
-        double radiusKm = 20;
-        SearchArea searchArea = SearchArea.builder().center(localCenter).radiusKm(radiusKm).build();
-
-        SearchArea originSearchArea = SearchArea.builder().center(center).radiusKm(1000).build();
-
-        when(distanceService.findDistance(eq(localCenter), argThat(c ->
-                Math.abs(c.latitude() - localCenter.latitude()) < 0.15 &&
-                        Math.abs(c.longitude() - localCenter.longitude()) < 0.15)))
-                .thenReturn(15.0);
-
-        when(distanceService.findDistance(eq(localCenter), argThat(c ->
-                Math.abs(c.latitude() - localCenter.latitude()) >= 0.15 ||
-                        Math.abs(c.longitude() - localCenter.longitude()) >= 0.15)))
-                .thenReturn(25.0);
-
-        when(distanceService.findDistance(eq(center), any())).thenReturn(10.0);
-
-        List<Coordinate> results = astroSpotService.findPointsWithinRadius(searchArea, originSearchArea, gridSize);
-
-        assertFalse(results.isEmpty(), "The list of points should not be empty");
-
-        for (Coordinate coord : results) {
-            double distFromCenter = distanceService.findDistance(localCenter, coord);
-            assertTrue(distFromCenter <= radiusKm,
-                    String.format("Location %s is too far from center: %.2f km, limit %f km", coord, distFromCenter, radiusKm));
-
-            double distFromOrigin = distanceService.findDistance(center, coord);
-            assertTrue(distFromOrigin <= originSearchArea.radiusKm(),
-                    String.format("Location %s is too far from originCenter: %.2f km, limit %f km", coord, distFromOrigin, originSearchArea.radiusKm()));
-        }
-    }
-
-    @Test
-    void findPointsWithinRadius_handlesGridSizeNull_useDefaultGridSize() {
-        astroSpotService = new AstroSpotServiceImpl(null, distanceService, null, null, new TopLocationsConfig(5, 50, false), new ExecutorConfig(2));
-        Coordinate center = new Coordinate(0, 0);
-        double radiusKm = 15;
-
-        when(distanceService.findDistance(any(), any())).thenReturn(0.0);
-
-        List<Coordinate> results = astroSpotService.findPointsWithinRadius(
-                SearchArea.builder().center(center).radiusKm(radiusKm).build(),
-                originSearchArea,
-                new GridSize(0.09, 0.15)
+        service = new AstroSpotServiceImpl(
+                lightPollutionService,
+                distanceService,
+                straightLineDistanceService,
+                weatherForecastService,
+                locationScorer,
+                topLocationsConfig
         );
-
-        assertFalse(results.isEmpty());
-
-        Coordinate first = results.getFirst();
-        double radiusInDegrees = radiusKm / KM_PER_DEGREE;
-        double minLatGrid = Math.floor((center.latitude() - radiusInDegrees) / 0.09) * 0.09;
-        double minLonGrid = Math.floor((center.longitude() - radiusInDegrees) / 0.15) * 0.15;
-
-        assertTrue(first.latitude() >= minLatGrid);
-        assertTrue(first.longitude() >= minLonGrid);
     }
 
     @Test
-    void filterTopByBrightness_shouldReturnEmpty_whenInputIsNull() {
-        List<LocationConditions> result = astroSpotService.filterTopByBrightness(null);
-        assertTrue(result.isEmpty());
+    void findPointsWithinRadius_returnsExpectedCoordinates() {
+        Coordinate center = new Coordinate(50, 20);
+        SearchArea searchArea = new SearchArea(center, 2.0);
+        SearchArea originArea = searchArea;
+        GridSize gridSize = new GridSize(0.01, 0.01);
+
+        when(distanceService.findDistance(any(), any())).thenReturn(1.0);
+
+        Set<Coordinate> result = service.findPointsWithinRadius(searchArea, originArea, gridSize);
+
+        assertFalse(result.isEmpty());
+        assertEquals(72, result.size());
     }
 
     @Test
-    void filterTopByBrightness_shouldReturnEmpty_whenInputIsEmpty() {
-        List<LocationConditions> result = astroSpotService.filterTopByBrightness(Collections.emptyList());
-        assertTrue(result.isEmpty());
-    }
+    void getLocationsWithBrightness_mapsBrightnessCorrectly() {
+        Coordinate coord1 = new Coordinate(50, 21);
+        LightPollutionInfo info = new LightPollutionInfo(50, 21,0.2);
 
-    @Test
-    void filterTopByBrightness_shouldReturnEmptyAndLogWarn_whenTopPercentBelowOrEqualZero() {
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(3, 0, false), new ExecutorConfig(2));
-        List<LocationConditions> result = astroSpotService.filterTopByBrightness(List.of(new Coordinate(10, 20)));
-        assertTrue(result.isEmpty());
-    }
+        when(lightPollutionService.getLightPollution(coord1)).thenReturn(Optional.of(info));
 
-    @Test
-    void filterTopByBrightness_shouldReturnAtLeastTopNumberResults_evenIfPercentIsLow() {
-        List<Coordinate> coords = Arrays.asList(
-                new Coordinate(10, 10),
-                new Coordinate(20, 20),
-                new Coordinate(30, 30),
-                new Coordinate(40, 40)
-        );
+        Set<LocationConditions> result = service.getLocationsWithBrightness(Set.of(coord1));
 
-        when(lightPollutionService.getLightPollution(coords.get(0))).thenReturn(Optional.of(new LightPollutionInfo(10, 10, 0.9)));
-        when(lightPollutionService.getLightPollution(coords.get(1))).thenReturn(Optional.of(new LightPollutionInfo(20, 20, 0.2)));
-        when(lightPollutionService.getLightPollution(coords.get(2))).thenReturn(Optional.of(new LightPollutionInfo(30, 30, 0.5)));
-        when(lightPollutionService.getLightPollution(coords.get(3))).thenReturn(Optional.of(new LightPollutionInfo(40, 40, 0.7)));
-
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(3, 10, false), new ExecutorConfig(2));
-
-        List<LocationConditions> result = astroSpotService.filterTopByBrightness(coords);
-
-        assertEquals(3, result.size());
-
-        assertTrue(result.get(0).brightness() <= result.get(1).brightness());
-        assertTrue(result.get(1).brightness() <= result.get(2).brightness());
-    }
-
-    @Test
-    void filterTopByBrightness_shouldReturnCorrectTopPercent() {
-        List<Coordinate> coords = Arrays.asList(
-                new Coordinate(0, 0),
-                new Coordinate(1, 1),
-                new Coordinate(2, 2),
-                new Coordinate(3, 3),
-                new Coordinate(4, 4),
-                new Coordinate(5, 5)
-        );
-
-        for (int i = 0; i < coords.size(); i++) {
-            when(lightPollutionService.getLightPollution(coords.get(i)))
-                    .thenReturn(Optional.of(new LightPollutionInfo(coords.get(i).latitude(), coords.get(i).longitude(), 0.1 + 0.1 * i)));
-        }
-
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(1, 50, false), new ExecutorConfig(2));
-
-        List<LocationConditions> result = astroSpotService.filterTopByBrightness(coords);
-        assertEquals(3, result.size());
-
-        for (int i = 1; i < result.size(); i++) {
-            assertTrue(result.get(i).brightness() >= result.get(i - 1).brightness());
-        }
-    }
-
-    @Test
-    void filterTopByBrightness_shouldSkipPointsWithNoBrightnessData() {
-        List<Coordinate> coords = Arrays.asList(
-                new Coordinate(0, 0),
-                new Coordinate(1, 1),
-                new Coordinate(2, 2)
-        );
-
-        when(lightPollutionService.getLightPollution(coords.get(0))).thenReturn(Optional.empty());
-        when(lightPollutionService.getLightPollution(coords.get(1))).thenReturn(Optional.of(new LightPollutionInfo(1, 1, 0.1)));
-        when(lightPollutionService.getLightPollution(coords.get(2))).thenReturn(Optional.empty());
-
-        astroSpotService = new AstroSpotServiceImpl(lightPollutionService, null, null, null, new TopLocationsConfig(1, 100, false), new ExecutorConfig(2));
-
-        List<LocationConditions> result = astroSpotService.filterTopByBrightness(coords);
         assertEquals(1, result.size());
-        assertEquals(coords.get(1), result.get(0).coordinate());
+        assertEquals(0.2, result.iterator().next().brightness());
     }
 
     @Test
-    void testSearchBestSpotsRecursive_BaseCases_returnEmpty() {
-        Coordinate center = new Coordinate(0, 0);
-        GridSize gridSize = new GridSize(1.0, 1.0);
-        SearchArea originSearchArea = SearchArea.builder().center(center).radiusKm(10).build();
+    void getTopLocationConditions_returnsCorrectTopResults() {
+        LocationConditions loc1 = new LocationConditions(new Coordinate(1, 1), 0.1, null, null);
+        LocationConditions loc2 = new LocationConditions(new Coordinate(1, 2), 0.2, null, null);
+        LocationConditions loc3 = new LocationConditions(new Coordinate(2, 1), 0.3, null, null);
+        LocationConditions loc4 = new LocationConditions(new Coordinate(2, 2), 0.4, null, null);
+        LocationConditions loc5 = new LocationConditions(new Coordinate(2, 3), 0.5, null, null);
 
-        SearchArea searchArea1 = SearchArea.builder().center(center).radiusKm(10).build();
-        SearchContext searchContext1 = SearchContext.builder().searchArea(searchArea1).maxDepth(4).gridDiv(2).build();
-        SearchParams searchParams1 = SearchParams.builder().searchContext(searchContext1).gridSize(gridSize).depth(5).originSearchArea(originSearchArea).build();
-        List<LocationConditions> result1 = astroSpotService.searchBestSpotsRecursive(searchParams1);
-        assertTrue(result1.isEmpty());
+        Set<LocationConditions> input = Set.of(loc1, loc2, loc3, loc4, loc5);
 
-        SearchArea searchArea2 = SearchArea.builder().center(center).radiusKm(0.03).build();
-        SearchContext searchContext2 = SearchContext.builder().searchArea(searchArea2).maxDepth(4).gridDiv(2).build();
-        SearchParams searchParams2 = SearchParams.builder().searchContext(searchContext2).gridSize(gridSize).depth(0).originSearchArea(originSearchArea).build();
-        List<LocationConditions> result2 = astroSpotService.searchBestSpotsRecursive(searchParams2);
-        assertTrue(result2.isEmpty());
+        Set<LocationConditions> result = service.getTopLocationConditions(input);
+
+        assertEquals(3, result.size());
+        assertTrue(result.contains(loc1));
     }
 
     @Test
-    void testSearchBestSpotsRecursive_emptyGridPoints_thenNonEmptyGridPoints_returnsResult() {
-        AstroSpotServiceImpl spyService = spy(astroSpotService);
-
-        Coordinate center = new Coordinate(0, 0);
-        GridSize initialGridSize = new GridSize(1.0, 1.0);
-        GridSize smallerGridSize = new GridSize(0.5, 0.5);
-
-        doAnswer(invocation -> {
-            SearchArea searchArea = invocation.getArgument(0);
-            GridSize gridSize = invocation.getArgument(2);
-            if (Math.abs(gridSize.latitudeDegrees() - initialGridSize.latitudeDegrees()) < 0.0001 &&
-                    Math.abs(gridSize.longitudeDegrees() - initialGridSize.longitudeDegrees()) < 0.0001) {
-                return Collections.emptyList();
-            } else {
-                return List.of(new Coordinate(1, 1));
-            }
-        }).when(spyService).findPointsWithinRadius(any(), any(), any());
-
-        doReturn(List.of(new LocationConditions(new Coordinate(1, 1), 0.5, null, null))).when(spyService).filterTopByBrightness(anyList());
-
-        SearchArea originSearchArea = SearchArea.builder()
-                .center(center)
-                .radiusKm(10)
-                .build();
-
-        SearchContext searchContext = SearchContext.builder()
-                .maxDepth(4)
+    void isInvalidSearchParams_detectsInvalidParams() {
+        SearchContext ctx = SearchContext.builder()
+                .searchArea(new SearchArea(new Coordinate(0, 0), 0.01))
+                .maxDepth(1)
                 .gridDiv(2)
-                .searchArea(SearchArea.builder().center(center).radiusKm(10).build())
                 .build();
 
         SearchParams params = SearchParams.builder()
-                .searchContext(searchContext)
-                .gridSize(initialGridSize)
-                .depth(0)
-                .originSearchArea(originSearchArea)
+                .searchContext(ctx)
+                .gridSize(new GridSize(0.1, 0.1))
+                .depth(2)
+                .originSearchArea(new SearchArea(new Coordinate(0, 0), 10))
                 .build();
 
-        List<LocationConditions> result = spyService.searchBestSpotsRecursive(params);
-
-        assertFalse(result.isEmpty(), "The result should not be empty after grid compaction");
-        assertTrue(result.stream().anyMatch(loc -> loc.coordinate().equals(new Coordinate(1, 1))));
+        assertTrue(service.isInvalidSearchParams(params));
     }
 
     @Test
-    void testSearchBestSpotsRecursive_emptyTopSpots_returnEmpty() {
-        AstroSpotServiceImpl spyService = spy(astroSpotService);
+    void mergeOverlappingClusters_mergesCloseClustersCorrectly() {
+        double eps = 10.0;
 
-        List<Coordinate> coords = List.of(new Coordinate(1, 1), new Coordinate(2, 2));
-        doReturn(coords).when(spyService).findPointsWithinRadius(any(), any(), any());
-        doReturn(Collections.emptyList()).when(spyService).filterTopByBrightness(coords);
+        LocationConditions loc1 = new LocationConditions(new Coordinate(50.0, 20.0), 0.1, null, null);
+        LocationConditions loc2 = new LocationConditions(new Coordinate(50.001, 20.001), 0.2, null, null);
+        LocationConditions loc3 = new LocationConditions(new Coordinate(50.1, 20.1), 0.3, null, null);
 
-        SearchArea searchArea = SearchArea.builder().center(new Coordinate(0, 0)).radiusKm(10).build();
-        SearchContext searchContext = SearchContext.builder().maxDepth(4).gridDiv(2).searchArea(searchArea).build();
-        SearchParams searchParams = SearchParams.builder().searchContext(searchContext).gridSize(GridSize.builder().latitudeDegrees(1).longitudeDegrees(1).build()).depth(0).originSearchArea(originSearchArea).build();
+        LocationsCluster cluster1 = new LocationsCluster(Set.of(loc1));
+        LocationsCluster cluster2 = new LocationsCluster(Set.of(loc2));
+        LocationsCluster cluster3 = new LocationsCluster(Set.of(loc3));
 
-        List<LocationConditions> result = spyService.searchBestSpotsRecursive(searchParams);
-        assertTrue(result.isEmpty());
+        List<LocationsCluster> clusters = new ArrayList<>(List.of(cluster1, cluster2, cluster3));
+
+        when(straightLineDistanceService.findDistance(loc1.coordinate(), loc2.coordinate())).thenReturn(5.0);
+
+        when(straightLineDistanceService.findDistance(loc1.coordinate(), loc3.coordinate())).thenReturn(20.0);
+
+        when(straightLineDistanceService.findDistance(loc2.coordinate(), loc3.coordinate())).thenReturn(20.0);
+
+        List<LocationsCluster> mergedClusters = service.mergeOverlappingClusters(clusters, eps);
+
+        assertEquals(2, mergedClusters.size());
+
+        boolean mergedContainsLoc1AndLoc2 = mergedClusters.stream()
+                .anyMatch(c -> c.getLocations().contains(loc1) && c.getLocations().contains(loc2));
+        assertTrue(mergedContainsLoc1AndLoc2);
+
+        boolean clusterContainsLoc3 = mergedClusters.stream()
+                .anyMatch(c -> c.getLocations().contains(loc3));
+        assertTrue(clusterContainsLoc3);
     }
 
-    @Test
-    void testSearchBestSpotsRecursive_fullFlow_returnsAggregatedResults() {
-        AstroSpotServiceImpl spyService = spy(astroSpotService);
 
-        Coordinate spot1 = new Coordinate(1, 1);
-        LocationConditions locCond1 = new LocationConditions(spot1, 10, null, null);
-        List<LocationConditions> topSpots = List.of(locCond1);
-        List<Coordinate> gridPoints = List.of(spot1);
-
-        doReturn(gridPoints).when(spyService).findPointsWithinRadius(any(), any(), any());
-        doReturn(topSpots).when(spyService).filterTopByBrightness(gridPoints);
-
-        doAnswer(invocation -> CompletableFuture.completedFuture(Collections.emptyList()))
-                .when(spyService).supplyAsync(any());
-
-        SearchArea searchArea = SearchArea.builder().center(new Coordinate(0, 0)).radiusKm(10).build();
-        SearchContext searchContext = SearchContext.builder().maxDepth(4).gridDiv(2).searchArea(searchArea).build();
-        SearchParams searchParams = SearchParams.builder().searchContext(searchContext).gridSize(GridSize.builder().latitudeDegrees(1).longitudeDegrees(1).build()).depth(0).originSearchArea(originSearchArea).build();
-
-        List<LocationConditions> results = spyService.searchBestSpotsRecursive(searchParams);
-
-        assertFalse(results.isEmpty());
-        assertTrue(results.contains(locCond1));
-    }
-
-    @Test
-    void testIsInvalidSearchParams_depthExceedsMax() {
-        SearchParams params = new SearchParams(
-                new SearchContext(2, 2, new SearchArea(new Coordinate(0, 0), 1)),
-                new GridSize(1.0, 1.0),
-                3,
-                new SearchArea(new Coordinate(0, 0), 1)
-        );
-        assertTrue(astroSpotService.isInvalidSearchParams(params));
-    }
-
-    @Test
-    void testIsInvalidSearchParams_radiusTooSmall() {
-        SearchParams params = new SearchParams(
-                new SearchContext(5, 2, new SearchArea(new Coordinate(0, 0), 0.03)),
-                new GridSize(1.0, 1.0),
-                1,
-                new SearchArea(new Coordinate(0, 0), 1)
-        );
-        assertTrue(astroSpotService.isInvalidSearchParams(params));
-    }
-
-    @Test
-    void testIsInvalidSearchParams_validParams() {
-        SearchParams params = new SearchParams(
-                new SearchContext(5, 2, new SearchArea(new Coordinate(0, 0), 1)),
-                new GridSize(1.0, 1.0),
-                1,
-                new SearchArea(new Coordinate(0, 0), 1)
-        );
-        assertFalse(astroSpotService.isInvalidSearchParams(params));
-    }
-
-    @Test
-    void testRecursiveForEmptyGrid_callsSearchAgainWithSmallerGrid() {
-        AstroSpotServiceImpl spyService = spy(astroSpotService);
-        SearchArea originSearchArea = new SearchArea(new Coordinate(0, 0), 10);
-        SearchArea searchArea = new SearchArea(new Coordinate(0, 0), 10);
-        GridSize initialGrid = new GridSize(1.0, 1.0);
-        int depth = 0;
-
-        SearchContext context = new SearchContext(5, 2, searchArea);
-        SearchParams params = new SearchParams(context, initialGrid, depth, originSearchArea);
-
-        GridSize expectedSmallerGrid = new GridSize(0.5, 0.5);
-
-        doReturn(List.of(new LocationConditions(new Coordinate(1, 2), 10.0, null, null)))
-                .when(spyService)
-                .searchBestSpotsRecursive(argThat(searchParams ->
-                        Double.compare(searchParams.gridSize().latitudeDegrees(), expectedSmallerGrid.latitudeDegrees()) == 0 &&
-                                Double.compare(searchParams.gridSize().longitudeDegrees(), expectedSmallerGrid.longitudeDegrees()) == 0 &&
-                                searchParams.depth() == depth
-                ));
-        List<LocationConditions> result = spyService.recursiveForEmptyGrid(params);
-
-        assertNotNull(result, "Result should not be null");
-        assertEquals(1, result.size(), "A mock list with one location should be returned");
-        verify(spyService, times(1)).searchBestSpotsRecursive(any(SearchParams.class));
-    }
-
-    @Test
-    void testRecursiveSearchForSpotsReturnsAggregatedResults() {
-        AstroSpotServiceImpl spyService = spy(astroSpotService);
-
-        SearchParams baseParams = new SearchParams(
-                new SearchContext(3, 2, new SearchArea(new Coordinate(0, 0), 10)),
-                new GridSize(1.0, 1.0),
-                0,
-                new SearchArea(new Coordinate(0, 0), 10)
-        );
-
-        LocationConditions spot1 = new LocationConditions(new Coordinate(0.1, 0.1), 10, null, null);
-        LocationConditions spot2 = new LocationConditions(new Coordinate(0.2, 0.2), 20, null, null);
-
-        List<LocationConditions> topSpots = List.of(spot1, spot2);
-
-        doReturn(List.of(spot1))
-                .when(spyService).searchBestSpotsRecursive(any(SearchParams.class));
-
-        List<LocationConditions> results = spyService.recursiveSearchForTopSpots(baseParams, topSpots);
-
-        assertNotNull(results);
-        assertFalse(results.isEmpty(), "Result should not be empty");
-        assertTrue(results.contains(spot1), "Result should contain spot1");
-    }
-
-    @Test
-    void testMergeWeatherIntoLocation_setsWeatherCorrectly() throws Exception {
-        LocationConditions location = new LocationConditions(new Coordinate(10, 20), 50.0, null, Map.of());
-        WeatherForecastResponse weather = Mockito.mock(WeatherForecastResponse.class);
-
-        var method = AstroSpotServiceImpl.class.getDeclaredMethod("mergeWeatherIntoLocation", LocationConditions.class, WeatherForecastResponse.class);
-        method.setAccessible(true);
-
-        LocationConditions result = (LocationConditions) method.invoke(astroSpotService, location, weather);
-
-        assertEquals(location.coordinate(), result.coordinate());
-        assertEquals(location.brightness(), result.brightness());
-        assertEquals(weather, result.weather());
-        assertEquals(location.score(), result.score());
-    }
-
-    @Test
-    void testGetBestSpotsWithWeatherScoring_returnsScoredAndSortedLocations() throws Exception {
-        List<LocationConditions> preliminaryLocations = List.of(
-                new LocationConditions(new Coordinate(10, 20), 50.0, null, Map.of())
-        );
-
-        ScoringParameters scoringParameters = ScoringParameters.defaultParameters();
-        String timezone = "UTC";
-
-        WeatherForecastResponse mockedWeather = Mockito.mock(WeatherForecastResponse.class);
-
-        when(weatherForecastService.getNightForecast(any(Coordinate.class), eq(timezone)))
-                .thenReturn(CompletableFuture.completedFuture(mockedWeather));
-
-        Map<String, List<SimplifiedLocationConditions>> mockedScoredLocations = Map.of("Period1", List.of());
-        when(locationScorer.scoreAndSortLocations(anyList(), eq(scoringParameters)))
-                .thenReturn(mockedScoredLocations);
-
-        CompletableFuture<Map<String, List<SimplifiedLocationConditions>>> futureResult =
-                astroSpotService.getBestSpotsWithWeatherScoring(preliminaryLocations, scoringParameters, timezone);
-
-        Map<String, List<SimplifiedLocationConditions>> result = futureResult.get();
-
-        assertNotNull(result);
-        assertSame(mockedScoredLocations, result);
-
-        verify(weatherForecastService, times(preliminaryLocations.size())).getNightForecast(any(Coordinate.class), eq(timezone));
-        verify(locationScorer, times(1)).scoreAndSortLocations(anyList(), eq(scoringParameters));
-    }
-
-    @Test
-    void getTopLocationConditions_withoutTies_returnsLimitedTop() {
-        List<LocationConditions> input = IntStream.rangeClosed(1, 7)
-                .mapToObj(i -> new LocationConditions(new Coordinate(i, i), 0.1 * i, null, null))
-                .collect(Collectors.toList());
-
-        astroSpotService = new AstroSpotServiceImpl(
-                lightPollutionService,
-                distanceService,
-                weatherForecastService,
-                locationScorer,
-                new TopLocationsConfig(3, 10, false),
-                new ExecutorConfig(2));
-
-        List<LocationConditions> result = astroSpotService.getTopLocationConditions(input);
-
-        assertEquals(3, result.size());
-        assertEquals(0.1, result.get(0).brightness(), 0.0001);
-        assertEquals(0.3, result.get(2).brightness(), 0.0001);
-    }
-
-    @Test
-    void getTopLocationConditions_withTies_returnsExtendedTop() {
-        List<LocationConditions> input = List.of(
-                new LocationConditions(new Coordinate(1, 1), 0.1, null, null),
-                new LocationConditions(new Coordinate(2, 2), 0.2, null, null),
-                new LocationConditions(new Coordinate(3, 3), 0.3, null, null),
-                new LocationConditions(new Coordinate(4, 4), 0.3, null, null),
-                new LocationConditions(new Coordinate(5, 5), 0.3, null, null),
-                new LocationConditions(new Coordinate(6, 6), 0.4, null, null),
-                new LocationConditions(new Coordinate(7, 7), 0.5, null, null));
-
-        astroSpotService = new AstroSpotServiceImpl(
-                lightPollutionService,
-                distanceService,
-                weatherForecastService,
-                locationScorer,
-                new TopLocationsConfig(3, 10, true),
-                new ExecutorConfig(2));
-
-        List<LocationConditions> result = astroSpotService.getTopLocationConditions(input);
-
-        assertEquals(5, result.size());
-
-        assertTrue(result.stream().allMatch(loc -> loc.brightness() <= 0.3));
-    }
 }

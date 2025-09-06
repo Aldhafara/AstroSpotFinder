@@ -1,6 +1,5 @@
 package com.aldhafara.astroSpotFinder;
 
-import com.aldhafara.astroSpotFinder.configuration.ExecutorConfig;
 import com.aldhafara.astroSpotFinder.configuration.TopLocationsConfig;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -9,7 +8,7 @@ import org.springframework.cache.annotation.EnableCaching;
 
 @SpringBootApplication
 @EnableCaching
-@EnableConfigurationProperties({TopLocationsConfig.class, ExecutorConfig.class})
+@EnableConfigurationProperties(TopLocationsConfig.class)
 public class AstroSpotFinderApplication {
 
 	public static void main(String[] args) {

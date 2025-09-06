@@ -31,7 +31,7 @@ class AstroSpotControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Invalid request parameters"))
-                .andExpect(jsonPath("$.message").value("searchBestSpots.latitude: must be greater than or equal to -90"));
+                .andExpect(jsonPath("$.message").value("searchBestSpotsWithClusters.latitude: must be greater than or equal to -90"));
     }
 
     @Test
@@ -44,7 +44,7 @@ class AstroSpotControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Invalid request parameters"))
-                .andExpect(jsonPath("$.message").value("searchBestSpots.latitude: must be less than or equal to 90"));
+                .andExpect(jsonPath("$.message").value("searchBestSpotsWithClusters.latitude: must be less than or equal to 90"));
     }
 
     @Test
@@ -57,7 +57,7 @@ class AstroSpotControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Invalid request parameters"))
-                .andExpect(jsonPath("$.message").value("searchBestSpots.longitude: must be greater than or equal to -180"));
+                .andExpect(jsonPath("$.message").value("searchBestSpotsWithClusters.longitude: must be greater than or equal to -180"));
     }
 
     @Test
@@ -70,7 +70,7 @@ class AstroSpotControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Invalid request parameters"))
-                .andExpect(jsonPath("$.message").value("searchBestSpots.longitude: must be less than or equal to 180"));
+                .andExpect(jsonPath("$.message").value("searchBestSpotsWithClusters.longitude: must be less than or equal to 180"));
     }
 
     @Test
@@ -83,7 +83,7 @@ class AstroSpotControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Invalid request parameters"))
-                .andExpect(jsonPath("$.message").value("searchBestSpots.radiusKm: must be greater than or equal to 0"));
+                .andExpect(jsonPath("$.message").value("searchBestSpotsWithClusters.radiusKm: must be greater than or equal to 0"));
     }
 
     @Test
@@ -96,7 +96,7 @@ class AstroSpotControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Invalid request parameters"))
-                .andExpect(jsonPath("$.message").value("searchBestSpots.radiusKm: must be less than or equal to 150"));
+                .andExpect(jsonPath("$.message").value("searchBestSpotsWithClusters.radiusKm: must be less than or equal to 150"));
     }
 
     @Test

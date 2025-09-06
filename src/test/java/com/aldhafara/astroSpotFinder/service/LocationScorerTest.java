@@ -109,8 +109,6 @@ class LocationScorerTest {
         // total = sum = 0.607843 + 0.5 + 0.5 + 0.5 + 0.5 = 2.607843
 
         double expected = 0.607843 + 0.5 + 0.5 + 0.5 + 0.5;
-        System.out.println(expected);
-        System.out.println(score);
         assertEquals(expected, score, 1e-5);
     }
 

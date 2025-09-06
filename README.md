@@ -28,19 +28,21 @@ planning astro-expeditions.
 - [How to Test](#how-to-test)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
-- [TODO / Roadmap](#todo--roadmap)
 
 ## Features
 
 Currently under development. Available now:
 
 - `/status` health-check endpoint (server status, uptime, timestamp)
-- `/astrospots/best` REST endpoint - finds the best astro observations spots in a radius around specified coordinates
+- `/astrospots/best` REST endpoint - finds the best astro observation spots grouped in clusters within a specified radius
+  around provided coordinates
 - Recursive and asynchronous search algorithm leveraging parameter objects (SearchParams, SearchArea, SearchContext) for
   flexible, precise queries
 - Caching of light pollution data responses for improved performance and reduced external calls
-- `/astrospots/best-scored` POST endpoint - accepts a list of preliminary spots and scoring parameters, returns best scored locations with weather integration
+- `/astrospots/best-scored` POST endpoint - accepts a list of location clusters with preliminary spots and scoring
+  parameters, returning best scored locations enhanced with weather information
 - Advanced scoring system integrating weather data and configurable weights for better location evaluation
+- Support for multi-threaded concurrent processing to optimize performance on high-volume location queries
 
 ## Required (or Recommended) Microservices
 
@@ -53,10 +55,12 @@ site recommendations. For best results, the following services should be availab
   Supplies nighttime cloud cover and temperature forecasts.
 
 **Fallback/Dummy support:**
-AstroSpotFinder allows manual selection of a dummy (fallback) implementation for each required service via configuration.
+AstroSpotFinder allows manual selection of a dummy (fallback) implementation for each required service via
+configuration.
 The dummy implementation can be enabled for development, demo or test scenarios by setting the appropriate property
 (e.g. `lightpollutionservice.provider=dummy`).
-**Note:** Fallback services are **not switched in automatically** if the external real service becomes unavailable at runtime.
+**Note:** Fallback services are **not switched in automatically** if the external real service becomes unavailable at
+runtime.
 The choice of real or dummy service is determined only at application startup (based on configuration).
 To use the real backend service instead of the dummy fallback, set the appropriate property
 (e.g. `lightpollutionservice.provider=real`) in your application.properties.
@@ -104,7 +108,8 @@ lightpollutionservice.url=https://your-lightpollutionservice.url
 
 **Note:**
 Switching between dummy/real services is always determined at application startup time. There is no automatic failover.
-Proceed similarly for other additional services. See [Required (or Recommended) Microservices](#required-or-recommended-microservices)
+Proceed similarly for other additional services.
+See [Required (or Recommended) Microservices](#required-or-recommended-microservices)
 
 ## How to Run
 
@@ -205,10 +210,10 @@ GET /astrospots/best?latitude=52.2298&longitude=21.0117&radiusKm=30&maxResults=1
 
 ### for /astrospots/best-scored
 
-| Parameter    | Type    | Description                                                                                                                                        |
-|--------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------|
-| parameters   | json    | Optional `ScoringParameters` via request parameter to control scoring weights and hours analysed                                                   |
-| Request body | json    | JSON array of `LocationConditions` objects (coordinates, brightness, weather, partial scoring), consistent with the answer from `/astrospots/best` |
+| Parameter    | Type | Description                                                                                                                       |
+|--------------|------|-----------------------------------------------------------------------------------------------------------------------------------|
+| parameters   | json | Optional `ScoringParameters` via request parameter to control scoring weights and hours analysed                                  |
+| Request body | json | JSON array of `LocationsCluster` objects, consistent with the [answer](#example-astrospotsbest-response)  from `/astrospots/best` |
 
 **Example parameters:**
 
@@ -245,20 +250,27 @@ GET /status
 
 ### Example `/astrospots/best` Response
 
-Returns a list of LocationConditions objects representing the best spots, sorted by light pollution brightness.
+Returns a list of LocationsCluster.
+Every LocationsCluster is a list of LocationConditions objects representing the best spots, sorted by light pollution
+brightness.
 
 ```json
 [
   {
-    "coordinate": {
-      "latitude": 52.26864169801801,
-      "longitude": 20.896780418018018
-    },
-    "brightness": 12,
-    "weather": null,
-    "score": null
+    "locations": [
+      {
+        "coordinate": {
+          "latitude": 52.26864169801801,
+          "longitude": 20.896780418018018
+        },
+        "brightness": 12,
+        "weather": null,
+        "score": null
+      },
+      //other points
+    ]
   },
-  //other points
+  //other locations
 ]
 ```
 
@@ -324,7 +336,8 @@ Returns a list of LocationConditions objects representing the best spots, sorted
 
 - Light pollution data responses are cached internally by AstroSpotService using Spring Cache.
 - Cache keys are based on coordinate parameters.
-- Cached entries are not stored for failed requests (e.g., HTTP 429 errors cause exceptions and do not populate the cache).
+- Cached entries are not stored for failed requests (e.g., HTTP 429 errors cause exceptions and do not populate the
+  cache).
 - This caching reduces redundant calls to the external LightPollutionService for improved performance.
 
 ## Rate Limiting
@@ -373,13 +386,3 @@ Run tests:
 ## License
 
 MIT
-
-## TODO / Roadmap
-
-- [X] /astrospots/best
-- [X] Result caching
-- [X] Input parameter validation
-- [X] Global error handler
-- [ ] API documentation (Swagger/OpenAPI)
-- [ ] Integration tests (MockMvc)
-- [X] Example deployment (Docker/Kubernetes)
