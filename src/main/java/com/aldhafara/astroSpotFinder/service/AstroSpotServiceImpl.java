@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StopWatch;
+import org.springframework.web.client.HttpClientErrorException;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,7 +29,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -55,12 +58,18 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                                 WeatherForecastService weatherForecastService,
                                 LocationScorer locationScorer,
                                 TopLocationsConfig topLocationsConfig) {
+        int processors = Runtime.getRuntime().availableProcessors();
+        log.info("Number of available processors: {}", processors);
+
         this.lightPollutionService = lightPollutionService;
         this.distanceService = distanceService;
         this.straightLineDistanceService = straightLineDistanceService;
         this.weatherForecastService = weatherForecastService;
         this.locationScorer = locationScorer;
-        this.executorService = Executors.newCachedThreadPool();
+        this.executorService = new ThreadPoolExecutor(
+                0, processors * 2,
+                15L, TimeUnit.SECONDS,
+                new SynchronousQueue<>());
         this.topNumber = topLocationsConfig.number() <= 0 ? 1 : topLocationsConfig.number();
         this.topPercent = topLocationsConfig.percent() > 100 ? 100 : topLocationsConfig.percent();
         this.filterWithTies = topLocationsConfig.extended();
@@ -124,7 +133,14 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                 .map(cluster -> CompletableFuture.supplyAsync(() -> {
                     Set<LocationConditions> updatedSet =
                             recursiveSearchForTopSpotsInCluster(searchParams, cluster.getLocations());
-                    return new LocationsCluster(updatedSet);
+
+                    Set<LocationConditions> filteredSet = updatedSet.stream().filter(Objects::nonNull)
+                            .collect(Collectors.toSet());
+
+                    if (filteredSet.isEmpty()) {
+                        return null;
+                    }
+                    return new LocationsCluster(filteredSet);
                 }))
                 .toList();
 
@@ -134,9 +150,10 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                         return future.join();
                     } catch (CompletionException e) {
                         log.error("Exception during async cluster recursive search", e);
-                        return new LocationsCluster();
+                        return null;
                     }
                 })
+                .filter(Objects::nonNull)
                 .toList();
 
         return updatedClusters;
@@ -188,7 +205,9 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
         Set<Coordinate> aggregatedResultsCoordinates = aggregatedResults.stream().map(LocationConditions::coordinate).collect(Collectors.toSet());
         Set<LocationConditions> locationsWithBrightness = getLocationsWithBrightness(aggregatedResultsCoordinates);
-        Set<LocationConditions> brightestSpots = getTopLocationConditions(locationsWithBrightness);
+        Set<LocationConditions> currentClusterPointsWithNewLocationsWithBrightness = new HashSet<>(currentClusterPoints);
+        currentClusterPointsWithNewLocationsWithBrightness.addAll(locationsWithBrightness);
+        Set<LocationConditions> brightestSpots = getTopLocationConditions(currentClusterPointsWithNewLocationsWithBrightness);
 
         currentClusterPoints.clear();
         currentClusterPoints.addAll(brightestSpots);
@@ -279,9 +298,16 @@ public class AstroSpotServiceImpl implements AstroSpotService {
 
         return coordinates.parallelStream()
                 .distinct()
-                .map(coord -> lightPollutionService.getLightPollution(coord)
-                        .map(info -> new LocationConditions(coord, info.relativeBrightness(), null, null))
-                        .orElse(null))
+                .map(coord -> {
+                    try {
+                        return lightPollutionService.getLightPollution(coord)
+                                .map(info -> new LocationConditions(coord, info.relativeBrightness(), null, null))
+                                .orElse(null);
+                    } catch (HttpClientErrorException.TooManyRequests e) {
+                        log.warn("Skipping coordinate {} due to 429 Too Many Requests", coord);
+                        return null;
+                    }
+                })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
     }
@@ -487,7 +513,6 @@ public class AstroSpotServiceImpl implements AstroSpotService {
             return locationScorer.scoreAndSortLocations(allLocationsWithWeather, parameters);
         });
     }
-
 
     private double calculateNewRadius(GridSize gridSize) {
         double kmPerDegreeLatitude = 111.0;
