@@ -1,9 +1,12 @@
 package com.aldhafara.astroSpotFinder.service;
 
+import com.aldhafara.astroSpotFinder.messaging.LightPollutionErrorEvent;
+import com.aldhafara.astroSpotFinder.messaging.LightPollutionErrorKafkaProducer;
 import com.aldhafara.astroSpotFinder.model.Coordinate;
 import com.aldhafara.astroSpotFinder.model.LightPollutionInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.annotation.Cacheable;
@@ -15,16 +18,18 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.Optional;
 
 @Service
-@ConditionalOnProperty(prefix = "lightpollutionservice", name = "provider", havingValue="real", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "lightpollutionservice", name = "provider", havingValue = "real", matchIfMissing = true)
 public class LightPollutionServiceImpl implements LightPollutionService {
 
     private static final Logger log = LoggerFactory.getLogger(LightPollutionServiceImpl.class);
-
     private final RestTemplate restTemplate;
     private final String serviceUrl;
+    @Autowired(required = false)
+    private LightPollutionErrorKafkaProducer kafkaProducer;
 
     public LightPollutionServiceImpl(RestTemplate restTemplate,
                                      @Value("${lightpollutionservice.url}") String serviceUrl) {
@@ -72,6 +77,10 @@ public class LightPollutionServiceImpl implements LightPollutionService {
         } catch (HttpClientErrorException.TooManyRequests e) {
             stopWatch.stop();
             log.warn("429 Too Many Requests for coordinate {}: will NOT cache this error", coordinate);
+            if (kafkaProducer != null) {
+                LightPollutionErrorEvent event = create429EventPayload(coordinate, e.getMessage());
+                kafkaProducer.sendEvent(event);
+            }
             throw e;
         } catch (RestClientException e) {
             stopWatch.stop();
@@ -79,6 +88,14 @@ public class LightPollutionServiceImpl implements LightPollutionService {
                     coordinate, uri, stopWatch.getTotalTimeMillis(), e);
             return Optional.empty();
         }
+    }
+
+    private LightPollutionErrorEvent create429EventPayload(Coordinate coordinate, String errorMessage) {
+        return new LightPollutionErrorEvent(
+                coordinate,
+                429,
+                Instant.now(),
+                errorMessage);
     }
 
     private URI buildDarknessUrl(Coordinate coordinate) {
