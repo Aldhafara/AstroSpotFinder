@@ -6,6 +6,7 @@ import com.aldhafara.astroSpotFinder.model.GridSize;
 import com.aldhafara.astroSpotFinder.model.LightPollutionInfo;
 import com.aldhafara.astroSpotFinder.model.LocationConditions;
 import com.aldhafara.astroSpotFinder.model.LocationsCluster;
+import com.aldhafara.astroSpotFinder.model.LocationsWithBrightnessResponse;
 import com.aldhafara.astroSpotFinder.model.SearchArea;
 import com.aldhafara.astroSpotFinder.model.SearchContext;
 import com.aldhafara.astroSpotFinder.model.SearchParams;
@@ -77,16 +78,17 @@ class AstroSpotServiceImplTest {
     }
 
     @Test
-    void getLocationsWithBrightness_mapsBrightnessCorrectly() {
+    void getBrightness_mapsBrightnessForLocationsCorrectly() {
         Coordinate coord1 = new Coordinate(50, 21);
         LightPollutionInfo info = new LightPollutionInfo(50, 21,0.2);
 
         when(lightPollutionService.getLightPollution(coord1)).thenReturn(Optional.of(info));
 
-        Set<LocationConditions> result = service.getLocationsWithBrightness(Set.of(coord1));
+        LocationsWithBrightnessResponse result = service.getBrightnessForLocations(Set.of(coord1));
 
-        assertEquals(1, result.size());
-        assertEquals(0.2, result.iterator().next().brightness());
+        assertEquals(1, result.getLocationsWithBrightness().size());
+        assertEquals(Set.of(), result.getAdditionalMessages());
+        assertEquals(0.2, result.getLocationsWithBrightness().iterator().next().brightness());
     }
 
     @Test

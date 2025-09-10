@@ -1,6 +1,7 @@
 package com.aldhafara.astroSpotFinder.controller;
 
 import com.aldhafara.astroSpotFinder.model.Coordinate;
+import com.aldhafara.astroSpotFinder.model.DarkestLocationsResponse;
 import com.aldhafara.astroSpotFinder.model.GridSize;
 import com.aldhafara.astroSpotFinder.model.LocationsCluster;
 import com.aldhafara.astroSpotFinder.model.ScoringParameters;
@@ -60,7 +61,7 @@ public class AstroSpotController {
     }
 
     @GetMapping("/best")
-    public List<LocationsCluster> searchBestSpotsWithClusters(
+    public DarkestLocationsResponse searchBestSpotsWithClusters(
             @RequestParam @Min(-90) @Max(90) double latitude,
             @RequestParam @Min(-180) @Max(180) double longitude,
             @RequestParam @Min(0) @Max(150) double radiusKm,
@@ -91,11 +92,11 @@ public class AstroSpotController {
         StopWatch stopWatch = new StopWatch();
 
         stopWatch.start("astroSpotController.searchBestLocationsClusters");
-        List<LocationsCluster> locationsClusters = astroSpotService.searchBestLocationsClusters(searchParams);
+        DarkestLocationsResponse darkestLocationsResponse = astroSpotService.searchBestLocationsClusters(searchParams);
         stopWatch.stop();
         log.info("searchBestLocationsClusters part 0 finished in {} ms", stopWatch.lastTaskInfo().getTimeMillis());
 
-        return locationsClusters;
+        return darkestLocationsResponse;
     }
 
     @Operation(

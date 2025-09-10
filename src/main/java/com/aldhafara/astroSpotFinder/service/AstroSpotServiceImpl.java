@@ -2,9 +2,12 @@ package com.aldhafara.astroSpotFinder.service;
 
 import com.aldhafara.astroSpotFinder.configuration.TopLocationsConfig;
 import com.aldhafara.astroSpotFinder.model.Coordinate;
+import com.aldhafara.astroSpotFinder.model.DarkestLocationsResponse;
+import com.aldhafara.astroSpotFinder.model.DarkestLocationsStatus;
 import com.aldhafara.astroSpotFinder.model.GridSize;
 import com.aldhafara.astroSpotFinder.model.LocationConditions;
 import com.aldhafara.astroSpotFinder.model.LocationsCluster;
+import com.aldhafara.astroSpotFinder.model.LocationsWithBrightnessResponse;
 import com.aldhafara.astroSpotFinder.model.ScoringParameters;
 import com.aldhafara.astroSpotFinder.model.SearchArea;
 import com.aldhafara.astroSpotFinder.model.SearchContext;
@@ -76,7 +79,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
     }
 
     @Override
-    public List<LocationsCluster> searchBestLocationsClusters(SearchParams searchParams) {
+    public DarkestLocationsResponse searchBestLocationsClusters(SearchParams searchParams) {
         StopWatch stopWatch = new StopWatch();
         stopWatch.start("searchBestLocationsClusters [depth=%d]".formatted(searchParams.depth()));
         log.debug("searchBestLocationsClusters [depth={}]: Parameters radiusKm={} depth={} maxDepth={}",
@@ -87,7 +90,7 @@ public class AstroSpotServiceImpl implements AstroSpotService {
             log.debug("searchBestLocationsClusters [depth={}]: invalid parameters radiusKm={} depth={} maxDepth={}",
                     searchParams.depth(), searchParams.searchContext().searchArea().radiusKm(),
                     searchParams.depth(), searchParams.searchContext().maxDepth());
-            return Collections.emptyList();
+            return new DarkestLocationsResponse(DarkestLocationsStatus.INVALID_PARAMETERS.getMessage(), Collections.emptyList());
         }
 
         Set<Coordinate> gridPoints = findPointsWithinRadius(
@@ -98,16 +101,19 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         if (gridPoints.isEmpty()) {
             log.debug("searchBestLocationsClusters [depth={}]: list gridPoints is empty, thickening the grid.",
                     searchParams.depth());
-            return Collections.emptyList();
+            var locationsWithBrightnessResponse = searchBestSpotsRecursive(searchParams);
+            String message = getAdditionalMessage(locationsWithBrightnessResponse.getAdditionalMessages());
+            return new DarkestLocationsResponse(message, List.of(new LocationsCluster(locationsWithBrightnessResponse.getLocationsWithBrightness())));
         }
         log.debug("searchBestLocationsClusters [depth={}]: list gridPoints has size {}", searchParams.depth(), gridPoints.size());
 
-        Set<LocationConditions> locationsWithBrightness = getLocationsWithBrightness(gridPoints);
-        Set<LocationConditions> brightestSpots = getTopLocationConditions(locationsWithBrightness);
+        LocationsWithBrightnessResponse locationsWithBrightnessResponse = getBrightnessForLocations(gridPoints);
+        Set<String> messages = new HashSet<>(locationsWithBrightnessResponse.getAdditionalMessages());
+        Set<LocationConditions> brightestSpots = getTopLocationConditions(locationsWithBrightnessResponse.getLocationsWithBrightness());
 
         if (brightestSpots.isEmpty()) {
             log.debug("searchBestLocationsClusters [depth={}]: list brightestSpots is empty", searchParams.depth());
-            return Collections.emptyList();
+            return new DarkestLocationsResponse(DarkestLocationsStatus.LIST_BRIGHTEST_SPOTS_IS_EMPTY.getMessage(), Collections.emptyList());
         }
         log.debug("searchBestLocationsClusters [depth={}]: list brightestSpots has size {}", searchParams.depth(), brightestSpots.size());
 
@@ -125,14 +131,19 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         stopWatch.stop();
         log.info("searchBestLocationsClusters finished at depth={} in {} ms, clusters size:{}", searchParams.depth(), stopWatch.getTotalTimeMillis(), clusters.size());
 
-        return recursiveSearchForClusters(searchParams, clusters);
+        DarkestLocationsResponse darkestLocationsResponse = recursiveSearchForClusters(searchParams, clusters);
+        messages.add(darkestLocationsResponse.additionalMessage());
+        return new DarkestLocationsResponse(getAdditionalMessage(messages), darkestLocationsResponse.locationsCluster());
     }
 
-    private List<LocationsCluster> recursiveSearchForClusters(SearchParams searchParams, List<LocationsCluster> clusters) {
+    private DarkestLocationsResponse recursiveSearchForClusters(SearchParams searchParams, List<LocationsCluster> clusters) {
+        Set<String> messages = new HashSet<>(Set.of());
         List<CompletableFuture<LocationsCluster>> futures = clusters.stream()
                 .map(cluster -> CompletableFuture.supplyAsync(() -> {
+                    LocationsWithBrightnessResponse response = recursiveSearchForTopSpotsInCluster(searchParams, cluster.getLocations());
                     Set<LocationConditions> updatedSet =
-                            recursiveSearchForTopSpotsInCluster(searchParams, cluster.getLocations());
+                            response.getLocationsWithBrightness();
+                    messages.addAll(response.getAdditionalMessages());
 
                     Set<LocationConditions> filteredSet = updatedSet.stream().filter(Objects::nonNull)
                             .collect(Collectors.toSet());
@@ -156,18 +167,32 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                 .filter(Objects::nonNull)
                 .toList();
 
-        return updatedClusters;
+        String message = getAdditionalMessage(messages);
+        return new DarkestLocationsResponse(message, updatedClusters);
     }
 
-    private Set<LocationConditions> recursiveSearchForTopSpotsInCluster(SearchParams searchParams, Set<LocationConditions> currentClusterPoints) {
+    private String getAdditionalMessage(Set<String> messages) {
+        log.debug("Additional messages: [\n{}]",String.join(",\n", messages));
+        messages.remove(DarkestLocationsStatus.NO_NEED_TO_GO_DEEPER.getMessage());
+        String message = String.join(", ", messages);
+        if (messages.contains(DarkestLocationsStatus.ANSWER_MAY_BE_INACCURATE_PLEASE_TRY_AGAIN_LATER.getMessage())) {
+            message = DarkestLocationsStatus.ANSWER_MAY_BE_INACCURATE_PLEASE_TRY_AGAIN_LATER.getMessage();
+        }
+        if (messages.isEmpty()) {
+            message = DarkestLocationsStatus.THIS_RESPONSE_IS_ACCURATE.getMessage();
+        }
+        return message;
+    }
+
+    private LocationsWithBrightnessResponse recursiveSearchForTopSpotsInCluster(SearchParams searchParams, Set<LocationConditions> currentClusterPoints) {
 
         if (searchParams.depth() >= searchParams.searchContext().maxDepth()) {
-            return currentClusterPoints;
+            return new LocationsWithBrightnessResponse(currentClusterPoints, Set.of(DarkestLocationsStatus.NO_NEED_TO_GO_DEEPER.getMessage()));
         }
 
         List<LocationConditions> clusterList = new ArrayList<>(currentClusterPoints);
 
-        List<CompletableFuture<Set<LocationConditions>>> futures = clusterList.stream()
+        List<CompletableFuture<LocationsWithBrightnessResponse>> futures = clusterList.stream()
                 .map(spot -> supplyAsync(() -> {
                     Coordinate subCenter = spot.coordinate();
                     double nextRadius = calculateNewRadius(searchParams.gridSize());
@@ -190,10 +215,14 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                 }))
                 .toList();
 
+        Set<String> messages = new HashSet<>(Set.of());
+
         Set<LocationConditions> aggregatedResults = futures.stream()
                 .map(future -> {
                     try {
-                        return future.join();
+                        LocationsWithBrightnessResponse locationsWithBrightnessResponse = future.join();
+                        messages.addAll(locationsWithBrightnessResponse.getAdditionalMessages());
+                        return locationsWithBrightnessResponse.getLocationsWithBrightness();
                     } catch (CompletionException e) {
                         log.error("Async recursive search error", e);
                         return Collections.<LocationConditions>emptyList();
@@ -204,9 +233,9 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                 .collect(Collectors.toSet());
 
         Set<Coordinate> aggregatedResultsCoordinates = aggregatedResults.stream().map(LocationConditions::coordinate).collect(Collectors.toSet());
-        Set<LocationConditions> locationsWithBrightness = getLocationsWithBrightness(aggregatedResultsCoordinates);
+        LocationsWithBrightnessResponse locationsWithBrightnessResponse = getBrightnessForLocations(aggregatedResultsCoordinates);
         Set<LocationConditions> currentClusterPointsWithNewLocationsWithBrightness = new HashSet<>(currentClusterPoints);
-        currentClusterPointsWithNewLocationsWithBrightness.addAll(locationsWithBrightness);
+        currentClusterPointsWithNewLocationsWithBrightness.addAll(locationsWithBrightnessResponse.getLocationsWithBrightness());
         Set<LocationConditions> brightestSpots = getTopLocationConditions(currentClusterPointsWithNewLocationsWithBrightness);
 
         currentClusterPoints.clear();
@@ -220,20 +249,23 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                     .originSearchArea(searchParams.originSearchArea())
                     .build();
 
-            return recursiveSearchForTopSpotsInCluster(nextParams, currentClusterPoints);
+            var asd = recursiveSearchForTopSpotsInCluster(nextParams, currentClusterPoints);
+            messages.addAll(asd.getAdditionalMessages());
+            return new LocationsWithBrightnessResponse(asd.getLocationsWithBrightness(), messages);
         } else {
-            return currentClusterPoints;
+            messages.addAll(locationsWithBrightnessResponse.getAdditionalMessages());
+            return new LocationsWithBrightnessResponse(currentClusterPoints, messages);
         }
     }
 
-    public Set<LocationConditions> searchBestSpotsRecursive(SearchParams searchParams) {
+    public LocationsWithBrightnessResponse searchBestSpotsRecursive(SearchParams searchParams) {
         StopWatch stopWatch = new StopWatch();
         stopWatch.start("searchBestSpotsRecursive [depth=%d]".formatted(searchParams.depth()));
         log.debug("searchBestSpotsRecursive [depth={}]: Parameters radiusKm={} depth={} maxDepth={}", searchParams.depth(), searchParams.searchContext().searchArea().radiusKm(), searchParams.depth(), searchParams.searchContext().maxDepth());
 
         if (isInvalidSearchParams(searchParams)) {
             log.debug("searchBestSpotsRecursive [depth={}]: invalid parameters radiusKm={} depth={} maxDepth={}", searchParams.depth(), searchParams.searchContext().searchArea().radiusKm(), searchParams.depth(), searchParams.searchContext().maxDepth());
-            return Collections.emptySet();
+            return new LocationsWithBrightnessResponse(Collections.emptySet(), Set.of(DarkestLocationsStatus.INVALID_PARAMETERS.getMessage()));
         }
 
         Set<Coordinate> gridPoints = findPointsWithinRadius(searchParams.searchContext().searchArea(), searchParams.originSearchArea(), searchParams.gridSize());
@@ -244,18 +276,20 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         }
         log.debug("searchBestSpotsRecursive [depth={}]: list gridPoints has size {}", searchParams.depth(), gridPoints.size());
 
-        Set<LocationConditions> locationsWithBrightness = getLocationsWithBrightness(gridPoints);
-        Set<LocationConditions> brightestSpots = getTopLocationConditions(locationsWithBrightness);
+        LocationsWithBrightnessResponse locationsWithBrightnessResponse = getBrightnessForLocations(gridPoints);
+        Set<String> messages = new HashSet<>(locationsWithBrightnessResponse.getAdditionalMessages());
+        Set<LocationConditions> brightestSpots = getTopLocationConditions(locationsWithBrightnessResponse.getLocationsWithBrightness());
 
         if (brightestSpots.isEmpty()) {
             log.debug("searchBestSpotsRecursive [depth={}]: list brightestSpots is empty", searchParams.depth());
-            return Collections.emptySet();
+            return new LocationsWithBrightnessResponse(Collections.emptySet(), Set.of(DarkestLocationsStatus.LIST_BRIGHTEST_SPOTS_IS_EMPTY.getMessage()));
         }
         log.debug("searchBestSpotsRecursive [depth={}]: list brightestSpots has size {}", searchParams.depth(), brightestSpots.size());
 
-        Set<LocationConditions> subResults = recursiveSearchForTopSpotsInCluster(searchParams, brightestSpots);
+        LocationsWithBrightnessResponse subResults = recursiveSearchForTopSpotsInCluster(searchParams, brightestSpots);
+        messages.addAll(subResults.getAdditionalMessages());
         Set<LocationConditions> combined = new HashSet<>(brightestSpots);
-        combined.addAll(subResults);
+        combined.addAll(subResults.getLocationsWithBrightness());
 
         Set<LocationConditions> result = getTopLocationConditions(combined);
 
@@ -263,10 +297,10 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         log.info("searchBestSpotsRecursive finished at depth={} in {} ms", searchParams.depth(), stopWatch.getTotalTimeMillis());
         log.debug("searchBestSpotsRecursive finished at depth={} in {} ms, result size:{}", searchParams.depth(), stopWatch.getTotalTimeMillis(), result.size());
 
-        return result;
+        return new LocationsWithBrightnessResponse(result, messages);
     }
 
-    Set<LocationConditions> recursiveForEmptyGrid(SearchParams searchParams) {
+    LocationsWithBrightnessResponse recursiveForEmptyGrid(SearchParams searchParams) {
         SearchContext searchContext = SearchContext.builder()
                 .maxDepth(searchParams.searchContext().maxDepth())
                 .gridDiv(searchParams.searchContext().gridDiv())
@@ -283,20 +317,21 @@ public class AstroSpotServiceImpl implements AstroSpotService {
         return searchBestSpotsRecursive(nextSearchParams);
     }
 
-    Set<LocationConditions> getLocationsWithBrightness(Set<Coordinate> coordinates) {
+    LocationsWithBrightnessResponse getBrightnessForLocations(Set<Coordinate> coordinates) {
         if (coordinates == null || coordinates.isEmpty()) {
             log.info("There is no coordinates to check.");
-            return Collections.emptySet();
+            return new LocationsWithBrightnessResponse(Collections.emptySet(), Set.of("There is no coordinates to check."));
         }
         if (topPercent <= 0) {
             log.warn("The percentage of coordinates examined is set below 0. Top {} coordinates will be taken into account.", topNumber);
-            return Collections.emptySet();
+            return new LocationsWithBrightnessResponse(Collections.emptySet(), Set.of("The percentage of coordinates examined is set below 0."));
         }
         if (topPercent > 50) {
             log.warn("The percentage of coordinates examined is set to high ({}%). This may negatively impact performance.", topPercent);
         }
 
-        return coordinates.parallelStream()
+        Set<String> messages = new HashSet<>(Set.of());
+        Set<LocationConditions> locationsWithBrightness = coordinates.parallelStream()
                 .distinct()
                 .map(coord -> {
                     try {
@@ -305,11 +340,13 @@ public class AstroSpotServiceImpl implements AstroSpotService {
                                 .orElse(null);
                     } catch (HttpClientErrorException.TooManyRequests e) {
                         log.warn("Skipping coordinate {} due to 429 Too Many Requests", coord);
+                        messages.add(DarkestLocationsStatus.ANSWER_MAY_BE_INACCURATE_PLEASE_TRY_AGAIN_LATER.getMessage());
                         return null;
                     }
                 })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
+        return new LocationsWithBrightnessResponse(locationsWithBrightness, messages);
     }
 
     public Set<LocationConditions> getTopLocationConditions(Set<LocationConditions> locations) {

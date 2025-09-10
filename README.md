@@ -345,25 +345,29 @@ GET /status
 Returns a list of LocationsCluster.
 Every LocationsCluster is a list of LocationConditions objects representing the best spots, sorted by light pollution
 brightness.
+`additionalMessage` field contains additional information about the accuracy of the result.
 
 ```json
-[
-  {
-    "locations": [
-      {
-        "coordinate": {
-          "latitude": 52.26864169801801,
-          "longitude": 20.896780418018018
+{
+  "additionalMessage": "This response is accurate.",
+  "locationsCluster": [
+    {
+      "locations": [
+        {
+          "coordinate": {
+            "latitude": 52.26864169801801,
+            "longitude": 20.896780418018018
+          },
+          "brightness": 12,
+          "weather": null,
+          "score": null
         },
-        "brightness": 12,
-        "weather": null,
-        "score": null
-      },
-      //other points
-    ]
-  },
-  //other locations
-]
+        //other points
+      ]
+    },
+    //other locations
+  ]
+}
 ```
 
 ### Example for `/astrospots/best-scored`:

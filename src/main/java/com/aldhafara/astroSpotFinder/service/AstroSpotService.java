@@ -1,5 +1,6 @@
 package com.aldhafara.astroSpotFinder.service;
 
+import com.aldhafara.astroSpotFinder.model.DarkestLocationsResponse;
 import com.aldhafara.astroSpotFinder.model.LocationsCluster;
 import com.aldhafara.astroSpotFinder.model.ScoringParameters;
 import com.aldhafara.astroSpotFinder.model.SearchParams;
@@ -11,7 +12,7 @@ import java.util.concurrent.CompletableFuture;
 
 public interface AstroSpotService {
 
-    List<LocationsCluster> searchBestLocationsClusters(SearchParams searchParams);
+    DarkestLocationsResponse searchBestLocationsClusters(SearchParams searchParams);
 
     CompletableFuture<Map<String, List<SimplifiedLocationConditions>>> getBestSpotsWithWeatherScoringClusters(
             List<LocationsCluster> preliminaryLocationClusters,
